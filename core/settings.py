@@ -151,7 +151,7 @@ SIMPLE_JWT = {
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "https://your-ticketing-app.netlify.app",
 ]
 
 MEDIA_URL = '/media/'
