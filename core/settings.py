@@ -16,10 +16,7 @@ DEBUG = True
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(env_path)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
-if RENDER_EXTERNAL_HOSTNAME:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'concurrency-ticketing-1.onrender.com']
 # Application definition
 
 INSTALLED_APPS = [
