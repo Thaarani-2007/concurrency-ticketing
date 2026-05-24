@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from ticketing.views import test_email_trigger
 from .views import (
     EventViewSet, GoogleLoginView, SubmitApplicationView, 
     ApproveApplicationView, RegisterView, PublicEventListView, 
@@ -25,7 +26,7 @@ urlpatterns = [
     # 4. ADMIN ROUTES
     path('apply/', SubmitApplicationView.as_view(), name='submit_application'),
     path('admin/applications/<int:application_id>/approve/', ApproveApplicationView.as_view(), name='approve_application'),
-    
+    path('test-email/', test_email_trigger),
     # 5. THE CATCH-ALL ROUTER
     path('', include(router.urls)),
 ]

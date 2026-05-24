@@ -21,6 +21,7 @@ from django.utils import timezone
 from .tasks import send_ticket_confirmation
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse
 User = get_user_model()
 
 class GoogleLoginView(APIView):
@@ -303,3 +304,8 @@ class TicketStatusView(APIView):
 
         except Ticket.DoesNotExist:
             return Response({"error": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)    
+
+def test_email_trigger(request):
+    print("🚨 BACKDOOR TRIGGERED: Sending task to Celery...")
+    send_ticket_confirmation.delay("thaaranips007@gmail.com", "Test Event", "A1", "12345")
+    return HttpResponse("Task sent to Celery! Go look at your Render logs right now.")        
