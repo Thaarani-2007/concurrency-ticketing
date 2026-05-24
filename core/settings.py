@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 # core/settings.py
 SECRET_KEY = os.environ.get('SECRET_KEY') or 'django-insecure-dummy-key-for-local-dev'# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(env_path)
 
@@ -170,11 +170,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
-}
+
 
 # The modern Django 4.2+ way to handle static and media files
 STORAGES = {
