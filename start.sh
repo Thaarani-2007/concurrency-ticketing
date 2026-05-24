@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# Start the Celery worker in the background
+# Exit on error
+set -o errexit
+
+echo "Collecting static files..."
+python manage.py collectstatic --no-input
+
+echo "Running database migrations..."
+python manage.py migrate
+
+echo "Starting the Celery background worker..."
 celery -A core worker --loglevel=info &
 
-# Start the Django web server in the foreground
+echo "Starting the Django web server..."
 gunicorn core.wsgi:application
