@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 # core/settings.py
 SECRET_KEY = os.environ.get('SECRET_KEY') or 'django-insecure-dummy-key-for-local-dev'# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(env_path)
 
