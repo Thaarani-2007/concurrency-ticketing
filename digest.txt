@@ -1,0 +1,4115 @@
+Directory structure:
+└── ticketing_system/
+    ├── build.sh
+    ├── docker-compose.yml
+    ├── Dockerfile
+    ├── manage.py
+    ├── package.json
+    ├── requirements.txt
+    ├── start.sh
+    ├── ticketing_db
+    ├── core/
+    │   ├── __init__.py
+    │   ├── asgi.py
+    │   ├── celery.py
+    │   ├── settings.py
+    │   ├── urls.py
+    │   └── wsgi.py
+    ├── frontend/
+    │   ├── README.md
+    │   ├── eslint.config.js
+    │   ├── index.html
+    │   ├── package.json
+    │   ├── vite.config.js
+    │   ├── public/
+    │   │   └── _redirects
+    │   └── src/
+    │       ├── App.css
+    │       ├── App.jsx
+    │       ├── index.css
+    │       ├── main.jsx
+    │       └── components/
+    │           ├── api/
+    │           │   └── axios.js
+    │           ├── context/
+    │           │   └── AuthContext.jsx
+    │           └── pages/
+    │               ├── ApplyToHost.jsx
+    │               ├── Checkout.jsx
+    │               ├── CreateEvent.jsx
+    │               ├── Dashboard.jsx
+    │               ├── EditEvent.jsx
+    │               ├── EventDetails.jsx
+    │               ├── Home.jsx
+    │               ├── Login.jsx
+    │               ├── Register.jsx
+    │               └── SeatMap.jsx
+    └── ticketing/
+        ├── __init__.py
+        ├── admin.py
+        ├── apps.py
+        ├── models.py
+        ├── serializers.py
+        ├── tasks.py
+        ├── tests.py
+        ├── urls.py
+        ├── views.py
+        └── migrations/
+            ├── 0001_initial.py
+            ├── 0002_remove_user_is_organizer_user_role_and_more.py
+            ├── 0003_event_image.py
+            ├── 0004_event_description_event_price.py
+            ├── 0005_rename_image_event_thumbnail_event_address_and_more.py
+            ├── 0006_booking_razorpay_order_id_and_more.py
+            ├── 0007_booking_event.py
+            └── __init__.py
+
+================================================
+FILE: build.sh
+================================================
+#!/usr/bin/env bash
+# Exit on error
+set -o errexit
+
+echo "Installing requirements..."
+pip install -r requirements.txt
+
+echo "Collecting static files..."
+python manage.py collectstatic --no-input
+
+echo "Running database migrations..."
+python manage.py migrate
+
+
+================================================
+FILE: docker-compose.yml
+================================================
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ticketing_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: securepassword123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  adminer:
+    image: adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+
+
+================================================
+FILE: Dockerfile
+================================================
+# Use a slim Python image for production efficiency
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set the working directory
+WORKDIR /app
+
+# Install system dependencies (needed for Postgres)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of your project
+COPY . .
+
+# Expose the port (Render handles this, but it's good practice)
+EXPOSE 8000
+
+# Command to run the application
+CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]
+
+
+================================================
+FILE: manage.py
+================================================
+#!/usr/bin/env python
+"""Django's command-line utility for administrative tasks."""
+import os
+import sys
+
+
+def main():
+    """Run administrative tasks."""
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError as exc:
+        raise ImportError(
+            "Couldn't import Django. Are you sure it's installed and "
+            "available on your PYTHONPATH environment variable? Did you "
+            "forget to activate a virtual environment?"
+        ) from exc
+    execute_from_command_line(sys.argv)
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+================================================
+FILE: package.json
+================================================
+{
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.3.0"
+  },
+  "dependencies": {
+    "@react-oauth/google": "^0.13.5"
+  }
+}
+
+
+
+================================================
+FILE: requirements.txt
+================================================
+[Binary file]
+
+
+================================================
+FILE: start.sh
+================================================
+#!/usr/bin/env bash
+# Exit on error
+set -o errexit
+
+echo "Collecting static files..."
+python manage.py collectstatic --no-input
+
+echo "Running database migrations..."
+python manage.py migrate
+
+echo "Starting the Celery background worker..."
+celery -A core worker --loglevel=info &
+
+echo "Starting the Django web server..."
+gunicorn core.wsgi:application
+
+
+================================================
+FILE: ticketing_db
+================================================
+[Binary file]
+
+
+================================================
+FILE: core/__init__.py
+================================================
+# core/__init__.py
+from .celery import app as celery_app
+
+__all__ = ('celery_app',)
+
+
+================================================
+FILE: core/asgi.py
+================================================
+"""
+ASGI config for core project.
+
+It exposes the ASGI callable as a module-level variable named ``application``.
+
+For more information on this file, see
+https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
+"""
+
+import os
+
+from django.core.asgi import get_asgi_application
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+
+application = get_asgi_application()
+
+
+
+================================================
+FILE: core/celery.py
+================================================
+# core/celery.py
+import os
+from celery import Celery
+
+# Set the default Django settings module for the 'celery' program.
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+
+app = Celery('core')
+
+# Read config from Django settings, using a 'CELERY' namespace.
+app.config_from_object('django.conf:settings', namespace='CELERY')
+
+# Load task modules from all registered Django apps.
+app.autodiscover_tasks()
+
+
+================================================
+FILE: core/settings.py
+================================================
+
+from pathlib import Path
+from datetime import timedelta
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+import os
+from dotenv import load_dotenv
+import dj_database_url
+# Quick-start development settings - unsuitable for production
+# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+BASE_DIR = Path(__file__).resolve().parent.parent
+# SECURITY WARNING: keep the secret key used in production secret!
+# core/settings.py
+SECRET_KEY = os.environ.get('SECRET_KEY') or 'django-insecure-dummy-key-for-local-dev'# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+env_path = os.path.join(BASE_DIR, '.env')
+load_dotenv(env_path)
+
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'concurrency-ticketing-1.onrender.com']
+# Application definition
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'cloudinary_storage',         # <-- ADDED COMMA HERE
+    'django.contrib.staticfiles',
+    'cloudinary',                 # <-- ADDED COMMA HERE
+    'rest_framework',
+    'ticketing',
+    'corsheaders',
+]
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',        # <-- MOVED UP HERE
+    'whitenoise.middleware.WhiteNoiseMiddleware', 
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',    # <-- KEPT ONLY ONE
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+ROOT_URLCONF = 'core.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'core.wsgi.application'
+
+
+# Database
+# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600, # Keeps the connection open for speed!
+        conn_health_checks=True,
+    )
+}
+
+
+# Password validation
+# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+
+# Internationalization
+# https://docs.djangoproject.com/en/6.0/topics/i18n/
+
+LANGUAGE_CODE = 'en-us'
+
+TIME_ZONE = 'UTC'
+
+USE_I18N = True
+
+USE_TZ = True
+
+
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/6.0/howto/static-files/
+
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Turn on WhiteNoise compression and caching
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+AUTH_USER_MODEL = 'ticketing.User'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES' :  [
+        'rest_framework_simplejwt.authentication.JWTAuthentication'
+    ],
+}
+
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": None} if "upstash" in REDIS_URL else {},
+        }
+    }
+}
+# --- JWT AUTHENTICATION SETTINGS ---
+SIMPLE_JWT = {
+    # The Access Token is your short-lived "VIP Pass"
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1), # Changed from 5 minutes to 1 day for easier development
+    
+    # The Refresh Token is your long-lived "ID Card" to get a new VIP Pass
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    
+    # Optional but recommended security settings:
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+}
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://ticketing-system-demo1.netlify.app",
+]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+CELERY_BROKER_URL = REDIS_URL
+CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": "none"} if "upstash" in REDIS_URL else None
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+# --- EMAIL SETTINGS (Example using Gmail) ---
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+
+
+
+# The modern Django 4.2+ way to handle static and media files
+STORAGES = {
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
+WHITENOISE_MANIFEST_STRICT = False
+
+
+================================================
+FILE: core/urls.py
+================================================
+from django.contrib import admin
+from django.urls import path, include
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # CRITICAL: This must point to the 'ticketing.urls' file, NOT router.urls
+    path('api/', include('ticketing.urls')),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+================================================
+FILE: core/wsgi.py
+================================================
+"""
+WSGI config for core project.
+
+It exposes the WSGI callable as a module-level variable named ``application``.
+
+For more information on this file, see
+https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
+"""
+
+import os
+
+from django.core.wsgi import get_wsgi_application
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+
+application = get_wsgi_application()
+
+
+
+================================================
+FILE: frontend/README.md
+================================================
+# React + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+
+
+================================================
+FILE: frontend/eslint.config.js
+================================================
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{js,jsx}'],
+    extends: [
+      js.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
+])
+
+
+
+================================================
+FILE: frontend/index.html
+================================================
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+
+================================================
+FILE: frontend/package.json
+================================================
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-oauth/google": "^0.13.5",
+    "@tailwindcss/vite": "^4.3.0",
+    "axios": "^1.16.1",
+    "jwt-decode": "^4.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1",
+    "tailwindcss": "^4.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "vite": "^8.0.12"
+  }
+}
+
+
+
+================================================
+FILE: frontend/vite.config.js
+================================================
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(),
+            tailwindcss(),
+  ],
+  server: {
+    // This is the magic unlock key for Google OAuth popups
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      "Cross-Origin-Embedder-Policy": "unsafe-none",
+    },
+  },
+
+})
+
+
+
+================================================
+FILE: frontend/public/_redirects
+================================================
+/* /index.html 200
+
+
+================================================
+FILE: frontend/src/App.css
+================================================
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
+}
+
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
+}
+
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
+
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
+
+  .logo {
+    height: 18px;
+  }
+
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    li {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
+}
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+
+
+
+================================================
+FILE: frontend/src/App.jsx
+================================================
+import { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+import Home from './components/pages/Home';
+import Login from './components/pages/Login';
+
+const Dashboard = lazy(() => import('./components/pages/Dashboard'));
+const CreateEvent = lazy(() => import('./components/pages/CreateEvent'))
+const EventDetails = lazy(() => import('./components/pages/EventDetails'));
+const ApplyToHost = lazy(() => import('./components/pages/ApplyToHost')); 
+const Register = lazy(() => import('./components/pages/Register'));
+const EditEvent = lazy(()=>import('./components/pages/EditEvent'));
+
+// --- NEW PAGES ---
+const SeatMap = lazy(() => import('./components/pages/SeatMap'));
+const Checkout = lazy(() => import('./components/pages/Checkout'));
+
+const GlobalLoader = () => (
+    <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
+        <div className="text-xl font-semibold text-gray-500 animate-pulse">Loading App...</div>
+    </div>
+);
+
+export default function App() {
+  return(
+    <BrowserRouter>
+      <Suspense fallback={<GlobalLoader/>}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            
+            <Route path="/event/:id" element={<EventDetails />} />
+            {/* The visual grid where they click a seat to lock it */}
+            <Route path="/event/:id/seats" element={<SeatMap />} /> 
+            
+            {/* The final payment page with the 5-minute countdown */}
+            <Route path="/checkout/:ticketId" element={<Checkout />} /> 
+
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/apply" element={<ApplyToHost />} />
+            <Route path="/create-event" element={<CreateEvent />} />
+            <Route path="/edit-event/:id" element={<EditEvent />} />
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+      </Suspense>
+    </BrowserRouter>
+  )
+}
+
+
+================================================
+FILE: frontend/src/index.css
+================================================
+@import "tailwindcss"
+
+
+
+================================================
+FILE: frontend/src/main.jsx
+================================================
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+import { AuthProvider } from './components/context/AuthContext.jsx'
+import { GoogleOAuthProvider } from '@react-oauth/google';
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <GoogleOAuthProvider clientId = "357139621858-hcq3etulbdanlc0hrfcuv2nmekqhcs2r.apps.googleusercontent.com">
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+    </GoogleOAuthProvider>
+    
+    
+  </StrictMode>,
+)
+
+
+
+================================================
+FILE: frontend/src/components/api/axios.js
+================================================
+
+import axios from 'axios'
+
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/';
+const api = axios.create({
+    baseURL: baseURL,
+    headers: { 'Content-Type':'application/json'}
+});
+
+api.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('access');
+        if(token){
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error)=> Promise.reject(error)
+);
+
+api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+            return Promise.reject(error);
+        }
+        const originalRequest = error.config;
+        if(error.response.status === 401 && !originalRequest._retry){
+            originalRequest._retry = true;
+        try{
+            const refreshToken = localStorage.getItem('refresh');
+            const response = await axios.post(`${baseURL}token/refresh/`,{
+                refresh: refreshToken
+            });
+
+            localStorage.setItem('access',response.data.access);
+            originalRequest.headers.Authorization = `Bearer ${response.data.access}`;    
+            return api(originalRequest);
+
+        }catch{
+            localStorage.removeItem('access');
+            localStorage.removeItem('refresh');
+            window.location.href = '/login';
+        }
+    }
+    return Promise.reject(error);
+}
+);
+
+export default api;
+
+
+================================================
+FILE: frontend/src/components/context/AuthContext.jsx
+================================================
+import React, { createContext, useState, useEffect } from 'react';
+import { jwtDecode } from 'jwt-decode';
+import api from '../api/axios';
+
+export const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    // Consolidate into a single loading state for clarity
+    const [authLoading, setAuthLoading] = useState(true);
+
+    useEffect(() => {
+        // Look for the access token OR the explicit user object we save during Google Login
+        const token = localStorage.getItem('access');
+        const savedUser = localStorage.getItem('user');
+
+        if (savedUser) {
+            // Prefer the saved user object (Guarantees we have the role from Google Login)
+            setUser(JSON.parse(savedUser));
+        } else if (token) {
+            // Fallback for standard login
+            try {
+                const decoded = jwtDecode(token);
+                setUser(decoded);
+            } catch (error) {
+                console.error("Invalid token");
+            }
+        }
+        
+        // TELL THE APP WE ARE DONE CHECKING!
+        setAuthLoading(false); 
+    }, []);
+
+    const login = async (username, password) => {
+        const response = await api.post('token/', { username, password });
+        localStorage.setItem('access', response.data.access);
+        localStorage.setItem('refresh', response.data.refresh);
+        
+        const decodedUser = jwtDecode(response.data.access);
+        console.log("ðŸ”¥ THE DECODED TOKEN IS:", decodedUser);
+        console.log("DECODED STANDARD TOKEN:", decodedUser);
+        setUser(decodedUser);
+        
+        // CRITICAL: Return the user so Login.jsx knows whether to route to '/' or '/dashboard'
+        return decodedUser; 
+    };
+
+    const logout = () => {
+        localStorage.removeItem('access');
+        localStorage.removeItem('refresh');
+        localStorage.removeItem('user'); // Don't forget to clear this too!
+        setUser(null);
+    };
+
+    return (
+        // CRITICAL: Ensure authLoading and setUser are exposed to the rest of the app
+        <AuthContext.Provider value={{ user, setUser, login, logout, authLoading }}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+
+
+================================================
+FILE: frontend/src/components/pages/ApplyToHost.jsx
+================================================
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../api/axios'; // Your custom axios instance
+
+export default function ApplyToHost() {
+    const [formData, setFormData] = useState({
+        company_name: '',
+        tax_id_or_website: ''
+    });
+    const [status, setStatus] = useState({ type: '', message: '' });
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setStatus({ type: '', message: '' });
+
+        try {
+            // Hit the endpoint we just built in Django!
+            const response = await api.post('apply/', formData);
+            setStatus({ type: 'success', message: response.data.message });
+            
+            // Send them back to events after 3 seconds
+            setTimeout(() => navigate('/events'), 3000);
+        } catch (error) {
+            setStatus({ 
+                type: 'error', 
+                message: error.response?.data?.error || 'Failed to submit application.' 
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+            <div className="sm:mx-auto sm:w-full sm:max-w-md">
+                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                    Partner With Us
+                </h2>
+                <p className="mt-2 text-center text-sm text-gray-600">
+                    Apply for an Organizer account to start selling tickets.
+                </p>
+            </div>
+
+            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+                <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                    <form className="space-y-6" onSubmit={handleSubmit}>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                                Company / Organization Name
+                            </label>
+                            <div className="mt-1">
+                                <input
+                                    type="text"
+                                    required
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    value={formData.company_name}
+                                    onChange={(e) => setFormData({...formData, company_name: e.target.value})}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                                Official Website or Tax ID
+                            </label>
+                            <div className="mt-1">
+                                <input
+                                    type="text"
+                                    required
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    value={formData.tax_id_or_website}
+                                    onChange={(e) => setFormData({...formData, tax_id_or_website: e.target.value})}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Status Messages */}
+                        {status.message && (
+                            <div className={`p-3 rounded-md text-sm ${status.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                                {status.message}
+                            </div>
+                        )}
+
+                        <div>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            >
+                                {loading ? 'Submitting...' : 'Submit Application'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/Checkout.jsx
+================================================
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function Checkout() {
+    const { ticketId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    const [ticketData, setTicketData] = useState(null);
+    const [timeLeft, setTimeLeft] = useState(null);
+    const [status, setStatus] = useState('loading'); // 'loading', 'active', 'expired', 'success', 'error'
+    const [errorMessage, setErrorMessage] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const expiresAtRef = useRef(null);
+
+    // --- 1. THE SECURE INITIALIZATION ---
+    useEffect(() => {
+        let isMounted = true;
+
+        const verifyLockWithServer = async () => {
+            try {
+                // We ask Django: Do I actually own this lock?
+                const response = await api.get(`tickets/${ticketId}/status/`);
+                
+                if (!isMounted) return;
+
+                if (response.data.status === 'RESERVED' && response.data.is_owner) {
+                    // WE OWN IT! Set the true expiration time from the server.
+                    expiresAtRef.current = new Date(response.data.expires_at);
+                    setTicketData({ seat_number: "Verifying..." }); // Optional: Fetch real seat number if added to API
+                    setStatus('active');
+                } else {
+                    // The server says we don't own it (maybe it expired, or we are hacking)
+                    setStatus('expired');
+                }
+            } catch (err) {
+                if (isMounted) {
+                    setStatus('error');
+                    setErrorMessage('Could not connect to ticketing server. Your lock may be invalid.');
+                }
+            }
+        };
+
+        // Run the verification immediately
+        verifyLockWithServer();
+
+        // Security Feature: Re-verify with the server every 15 seconds
+        // Just in case the user's browser clock is messed up.
+        const verificationInterval = setInterval(verifyLockWithServer, 15000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(verificationInterval);
+        };
+    }, [ticketId]);
+
+
+    // --- 2. THE COUNTDOWN TIMER (Visual Only) ---
+    // This just updates the UI. The real security is the server check above.
+    useEffect(() => {
+        if (status !== 'active' || !expiresAtRef.current) return;
+
+        const timer = setInterval(() => {
+            const now = new Date();
+            const difference = expiresAtRef.current - now;
+
+            if (difference <= 0) {
+                clearInterval(timer);
+                setTimeLeft("0:00");
+                setStatus('expired');
+            } else {
+                const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+                setTimeLeft(`${minutes}:${seconds < 10 ? '0' : ''}${seconds}`);
+            }
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [status]);
+
+
+    // --- 3. THE PAYMENT CONFIRMATION ---
+    const handlePayment = async () => {
+        setIsProcessing(true);
+        setErrorMessage('');
+
+        try {
+            const response = await api.post(`tickets/${ticketId}/confirm/`);
+            
+            setStatus('success');
+            setTicketData({
+                ...ticketData,
+                booking_id: response.data.booking_id,
+                seat_number: response.data.seat_number
+            });
+
+        } catch (err) {
+            setIsProcessing(false);
+            const serverMessage = err.response?.data?.error;
+            
+            if (err.response?.status === 408) {
+                setStatus('expired');
+            } else {
+                setStatus('error');
+                setErrorMessage(serverMessage || "Payment failed. Please try again.");
+            }
+        }
+    };
+
+    // --- RENDER LOGIC ---
+    if (status === 'loading') {
+        return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Verifying secure connection to ticketing server...</div>;
+    }
+
+    if (status === 'success') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-100">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Ticket Secured!</h2>
+                    <p className="text-gray-500 mb-8">We've sent a confirmation email with your ticket details.</p>
+                    
+                    <div className="bg-gray-50 rounded-xl p-6 mb-8 text-left border border-gray-100">
+                        <p className="text-sm text-gray-500 font-semibold uppercase tracking-wide mb-1">Seat Number</p>
+                        <p className="text-2xl font-bold text-gray-900 mb-4">{ticketData?.seat_number}</p>
+                        
+                        <p className="text-sm text-gray-500 font-semibold uppercase tracking-wide mb-1">Booking ID</p>
+                        <p className="font-mono text-gray-900 break-all">{ticketData?.booking_id}</p>
+                    </div>
+
+                    <button onClick={() => navigate('/')} className="w-full py-3 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+                        Back to Home
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'expired') {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-100">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Reservation Expired</h2>
+                    <p className="text-gray-500 mb-8">Your lock has expired or is invalid. The seat has been released back to the public.</p>
+                    <button onClick={() => navigate(-1)} className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                        Back to Seat Map
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50 py-12 px-6">
+            <div className="max-w-3xl mx-auto">
+                <Link to={-1} className="text-sm font-medium text-blue-600 hover:underline mb-8 inline-block">
+                    &larr; Back to Seat Map
+                </Link>
+
+                <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                    <div className="bg-gray-900 px-8 py-6 flex justify-between items-center text-white">
+                        <div>
+                            <h2 className="text-xl font-bold">Checkout</h2>
+                            <p className="text-gray-400 text-sm mt-1">Complete your payment</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Time Remaining</p>
+                            <p className="text-2xl font-mono font-bold text-red-400 animate-pulse">{timeLeft}</p>
+                        </div>
+                    </div>
+
+                    <div className="p-8">
+                        {status === 'error' && (
+                            <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-700 border border-red-200 font-medium text-sm">
+                                {errorMessage}
+                            </div>
+                        )}
+
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 mb-8 flex justify-between items-center">
+                            <div>
+                                <p className="text-sm font-semibold text-blue-800">Your Seat is Reserved!</p>
+                                <p className="text-xs text-blue-600 mt-1">No one else can buy it until the timer runs out.</p>
+                            </div>
+                            <svg className="w-8 h-8 text-blue-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        </div>
+
+                        <div className="space-y-6">
+                            <h3 className="text-lg font-bold text-gray-900 border-b border-gray-100 pb-4">Payment Method</h3>
+                            
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center cursor-not-allowed">
+                                <p className="text-gray-500 font-medium">Dummy Checkout Enabled</p>
+                                <p className="text-xs text-gray-400 mt-1">No real credit card required for this demonstration.</p>
+                            </div>
+
+                            <button
+                                onClick={handlePayment}
+                                disabled={isProcessing}
+                                className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5 mt-8 flex justify-center items-center"
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                                        Processing Payment...
+                                    </>
+                                ) : (
+                                    'Simulate Purchase & Confirm Seat'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/CreateEvent.jsx
+================================================
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function CreateEvent() {
+    const navigate = useNavigate();
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    
+    // 1. The Massive State Object
+    const [formData, setFormData] = useState({ 
+        title: '', short_description: '', description: '', category: 'OTHER',
+        language: 'English', age_restriction: 'All Ages',
+        start_time: '', end_datetime: '', timezone: 'Asia/Kolkata',
+        event_mode: 'OFFLINE', venue_name: '', address: '', city: '', state: '', country: '', meeting_link: '',
+        total_capacity: '', price: '',
+        organizer_name: '', organizer_email: '', organizer_phone: '', organizer_website: ''
+    });
+    const [imageFile, setImageFile] = useState(null);
+
+    const getMinTime = () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 30);
+        const offset = now.getTimezoneOffset() * 60000;
+        return (new Date(now - offset)).toISOString().slice(0, 16);
+    };
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleFileChange = (e) => {
+        setImageFile(e.target.files[0]);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        
+        const submitData = new FormData();
+        
+        // SENIOR TRICK: Loop through the state object instead of typing 20 append lines!
+        Object.keys(formData).forEach(key => {
+            // Only append if the user actually typed something
+            if (formData[key] !== '') {
+                submitData.append(key, formData[key]);
+            }
+        });
+        
+        if (imageFile) {
+            submitData.append('thumbnail', imageFile);
+        }
+
+        try {
+            await api.post('events/me/', submitData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            navigate('/dashboard');
+        } catch (err) {
+            console.error("API Error:", err.response?.data || err.message);
+            setError('Failed to create event. Please check your inputs.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 py-10 px-6">
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <Link to="/dashboard" className="text-sm font-medium text-gray-500 hover:text-blue-600 mb-4 inline-block">
+                        &larr; Back to Dashboard
+                    </Link>
+                    <h2 className="text-3xl font-extrabold text-gray-900">Create New Event</h2>
+                    <p className="mt-1 text-sm text-gray-500">Provide comprehensive details for your attendees.</p>
+                </div>
+
+                {error && <div className="mb-6 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>}
+
+                <form onSubmit={handleSubmit} className="space-y-8">
+                    
+                    {/* SECTION 1: Basic Information */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">1. Basic Information</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
+                                <input type="text" name="title" required value={formData.title} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Short Description (Preview)</label>
+                                <input type="text" name="short_description" value={formData.short_description} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" maxLength="255" placeholder="A catchy 1-sentence summary" />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Full Description *</label>
+                                <textarea name="description" rows="5" required value={formData.description} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <select name="category" value={formData.category} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white">
+                                    <option value="TECH">Technology</option>
+                                    <option value="MUSIC">Music</option>
+                                    <option value="SPORTS">Sports</option>
+                                    <option value="BUSINESS">Business</option>
+                                    <option value="WORKSHOP">Workshop</option>
+                                    <option value="OTHER">Other</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
+                                <input type="text" name="language" value={formData.language} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g., English, Hindi" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 2: Date & Time */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">2. Schedule</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+                                <input type="datetime-local" name="start_time" required min={getMinTime()} value={formData.start_datetime} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                <input type="datetime-local" name="end_datetime" min={formData.start_datetime || getMinTime()} value={formData.end_datetime} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
+                                <input type="text" name="timezone" value={formData.timezone} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 3: Location */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">3. Location</h3>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Event Mode</label>
+                            <select name="event_mode" value={formData.event_mode} onChange={handleChange} className="w-full md:w-1/3 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white">
+                                <option value="OFFLINE">Offline (In-Person)</option>
+                                <option value="ONLINE">Online (Virtual)</option>
+                                <option value="HYBRID">Hybrid</option>
+                            </select>
+                        </div>
+
+                        {formData.event_mode !== 'ONLINE' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Venue Name</label>
+                                    <input type="text" name="venue_name" value={formData.venue_name} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                                    <input type="text" name="address" value={formData.address} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                    <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">State & Country</label>
+                                    <div className="flex gap-2">
+                                        <input type="text" name="state" placeholder="State" value={formData.state} onChange={handleChange} className="w-1/2 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                        <input type="text" name="country" placeholder="Country" value={formData.country} onChange={handleChange} className="w-1/2 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {formData.event_mode !== 'OFFLINE' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Meeting Link (Zoom, Meet, etc.)</label>
+                                <input type="url" name="meeting_link" value={formData.meeting_link} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="https://" />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SECTION 4: Ticketing & Organizer */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">4. Ticketing & Organizer</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Total Capacity *</label>
+                                <input type="number" name="total_capacity" required min="1" value={formData.total_capacity} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Ticket Price (â‚¹) *</label>
+                                <input type="number" name="price" required min="0" step="0.01" value={formData.price} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            
+                            <div className="md:col-span-2 mt-4 border-t pt-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Public Display Name (Organizer)</label>
+                                <input type="text" name="organizer_name" value={formData.organizer_name} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g., Apple Inc, TechClub" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                                <input type="email" name="organizer_email" value={formData.organizer_email} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                                <input type="url" name="organizer_website" value={formData.organizer_website} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="https://" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 5: Media */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">5. Media</h3>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Event Banner / Thumbnail</label>
+                            <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                            <p className="mt-1 text-xs text-gray-500">Wide aspect ratio recommended (16:9). Max 5MB.</p>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end sticky bottom-6 z-10 bg-white p-4 rounded-xl border border-gray-200 shadow-xl">
+                        <button type="submit" disabled={isLoading} className="rounded-md bg-blue-600 px-8 py-3 text-sm font-bold text-white shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors w-full sm:w-auto">
+                            {isLoading ? 'Publishing...' : 'Publish Event'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/Dashboard.jsx
+================================================
+import { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import api from '../api/axios';
+import { AuthContext } from '../context/AuthContext';
+
+export default function Dashboard() {
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [searchQuery, setSearchQuery] = useState(''); 
+    
+    const { user, logout } = useContext(AuthContext);
+    console.log("WHAT DASHBOARD SEES:", user);
+    const navigate = useNavigate();
+    const searchInputRef = useRef(null);
+    useEffect(() => {
+        console.log("ðŸš¨ SECURITY CHECK - Dashboard thinks user is:", user);
+        /*
+        if (!user) {
+            navigate('/login');
+        } 
+        // If they are logged in, but NOT an organizer, send to home
+        else if (user.role !== 'ORGANIZER') {
+            navigate('/');
+        }
+            */
+    }, [user, navigate]);
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const fetchEvents = async () => {
+            try {
+                const response = await api.get('events/me/', { signal: controller.signal });
+                const eventData = response.data.results ? response.data.results : response.data;
+                setEvents(Array.isArray(eventData) ? eventData : []);
+                
+                if (searchInputRef.current) {
+                    searchInputRef.current.focus();
+                }
+            } catch (err) {
+                console.error("API FETCH ERROR:", err.response?.data || err.message, err);
+                if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
+                    const serverMessage = err.response?.data?.detail;
+                    setError(serverMessage || 'Failed to load events. Please verify your server connection.');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchEvents();
+        return () => controller.abort();
+    }, []);
+
+    const handleLogout = useCallback(() => {
+        logout();
+        navigate('/login');
+    }, [logout, navigate]);
+
+    const filteredEvents = useMemo(() => {
+        if (!searchQuery) return events;
+        return events.filter(event => {
+            const title = (event.title || event.name || '').toLowerCase();
+            const desc = (event.description || '').toLowerCase();
+            const query = searchQuery.toLowerCase();
+            return title.includes(query) || desc.includes(query);
+        });
+    }, [events, searchQuery]);
+
+    const totalCapacity = useMemo(() => {
+        return filteredEvents.reduce((total, event) => total + (event.total_capacity || event.total_tickets || 0), 0);
+    }, [filteredEvents]);
+
+    if (loading) {
+        return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500 font-medium animate-pulse">Loading Organizer Environment...</div>;
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <nav className="bg-white shadow-sm border-b border-gray-200 px-6 py-4 flex flex-wrap justify-between items-center sticky top-0 z-10 gap-4">
+                <div className="flex items-center gap-8">
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+                        Ticketing Hub <span className="text-blue-600 text-sm font-semibold align-middle ml-1">Organizer</span>
+                    </h1>
+                    <div className="hidden sm:block border-l border-gray-200 pl-6">
+                        <Link to="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+                            &larr; Browse Public Events
+                        </Link>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <span className="hidden md:block text-sm font-medium text-gray-600 bg-gray-100 px-3 py-1.5 rounded-full">
+                        {user?.username || user?.email || 'Organizer'}
+                    </span>
+                    <button onClick={handleLogout} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                        Log Out
+                    </button>
+                </div>
+            </nav>
+
+            <main className="mx-auto max-w-7xl px-6 py-10">
+                <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">My Events</h2>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Showing {filteredEvents.length} events â€¢ Total Capacity: {totalCapacity} seats
+                        </p>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search events..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm px-4 py-2.5 w-64 border outline-none"
+                        />
+                        <Link to="/create-event" className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors">
+                            + Create New Event
+                        </Link>
+                    </div>
+                </div>
+
+                {error ? (
+                    <div className="rounded-lg bg-red-50 p-4 text-sm font-medium text-red-700 border border-red-200 shadow-sm">
+                        {error}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {filteredEvents.map((event) => {
+                            // UPGRADED DATA MAPPING: Using start_datetime from the new schema
+                            const eventTime = new Date(event.start_datetime || event.start_time || event.date);
+                            const isExpired = eventTime < new Date();
+                            
+                            const capacity = event.total_capacity || event.total_tickets || 0;
+                            const booked = event.tickets_sold || 0; 
+                            const unsold = capacity - booked;
+                            const isSoldOut = booked >= capacity;
+                            
+                            const price = event.price ? parseFloat(event.price) : 0;
+                            
+                            // UPGRADED DATA MAPPING: Using thumbnail from the new schema
+                            const imageSrc = event.thumbnail || event.image;
+
+                            return (
+                                <div key={event.id} className={`flex flex-col justify-between rounded-xl bg-white shadow-sm border overflow-hidden hover:shadow-md transition-shadow ${isExpired ? 'border-gray-200 opacity-90' : 'border-gray-100'}`}>
+                                    
+                                    <div className="relative h-48 w-full bg-gray-100 border-b border-gray-100">
+                                        {imageSrc ? (
+                                            <img 
+                                                src={imageSrc} 
+                                                alt={event.title} 
+                                                className={`h-full w-full object-cover ${isExpired ? 'grayscale' : ''}`}
+                                            />
+                                        ) : (
+                                            <div className="flex h-full items-center justify-center text-gray-400 text-sm">
+                                                No Banner Image
+                                            </div>
+                                        )}
+
+                                        {/* NEW: Category & Mode Badges */}
+                                        <div className="absolute top-3 left-3 flex gap-2">
+                                            {event.category && (
+                                                <span className="rounded bg-white/90 px-2 py-1 text-[10px] font-bold text-gray-800 shadow-sm uppercase">
+                                                    {event.category}
+                                                </span>
+                                            )}
+                                            {event.event_mode && (
+                                                <span className="rounded bg-blue-600/90 px-2 py-1 text-[10px] font-bold text-white shadow-sm uppercase">
+                                                    {event.event_mode}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {isExpired ? (
+                                            <div className="absolute top-3 right-3 rounded-full bg-gray-800 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                                                BOOKING OVER
+                                            </div>
+                                        ) : isSoldOut ? (
+                                            <div className="absolute top-3 right-3 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                                                SOLD OUT
+                                            </div>
+                                        ) : (
+                                            <div className="absolute top-3 right-3 rounded-full bg-green-500 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                                                ACTIVE
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="p-6 flex-1 flex flex-col justify-between">
+                                        <div>
+                                            <h3 className={`text-xl font-bold tracking-tight line-clamp-1 ${isExpired ? 'text-gray-600' : 'text-gray-900'}`}>
+                                                {event.title || event.name}
+                                            </h3>
+                                            
+                                            {/* UPGRADED: Using short_description if available, otherwise fallback */}
+                                            <p className="mt-2 text-sm text-gray-600 h-20 overflow-y-auto pr-2 custom-scrollbar">
+                                                {event.short_description || event.description || 'No description provided.'}
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="mt-6 border-t border-gray-50 pt-4">
+                                            
+                                            <div className="grid grid-cols-4 items-center text-xs font-semibold text-gray-400 mb-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-gray-400 font-normal">TIME</span>
+                                                    <span className="text-gray-900 truncate">{
+                                                        eventTime.toLocaleTimeString([], {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                            hour12: true,
+                                                        })
+                                                    }</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-gray-400 font-normal">DATE</span>
+                                                    <span className="text-gray-900 truncate">{eventTime.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                                </div>
+                                                
+                                                <div className="flex flex-col text-center border-x border-gray-100 px-2">
+                                                    <span className="text-gray-400 font-normal">PRICE</span>
+                                                    {price === 0 ? (
+                                                        <span className="text-green-600">FREE</span>
+                                                    ) : (
+                                                        <span className="text-gray-900">â‚¹{price}</span>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex flex-col text-right">
+                                                    <span className="text-gray-400 font-normal">CAPACITY</span>
+                                                    <span className="text-gray-900">{capacity}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {isExpired ? (
+                                                <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 flex justify-between items-center text-sm">
+                                                    <span className="font-semibold text-gray-700"><span className="text-green-600">{booked}</span> Booked</span>
+                                                    <span className="font-semibold text-gray-700"><span className="text-red-500">{unsold}</span> Unbooked</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => navigate(`/event/${event.id}`)} 
+                                                        className="flex-1 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors focus:outline-none"
+                                                    >
+                                                        Manage
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => navigate(`/edit-event/${event.id}`)} 
+                                                        className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {filteredEvents.length === 0 && !error && (
+                            <div className="col-span-full py-16 text-center rounded-xl bg-white border border-dashed border-gray-300">
+                                <h3 className="mt-2 text-sm font-semibold text-gray-900">No events found</h3>
+                                <p className="mt-1 text-sm text-gray-500 max-w-sm mx-auto">Try adjusting your search or create a new event.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </main>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/EditEvent.jsx
+================================================
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function EditEvent() {
+    const { id } = useParams();
+    const navigate = useNavigate();
+    
+    const [isFetching, setIsFetching] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    
+    // 1. The State Object
+    const [formData, setFormData] = useState({ 
+        title: '', short_description: '', description: '', category: 'OTHER',
+        language: 'English', age_restriction: 'All Ages',
+        start_datetime: '', end_datetime: '', timezone: 'Asia/Kolkata',
+        event_mode: 'OFFLINE', venue_name: '', address: '', city: '', state: '', country: '', meeting_link: '',
+        total_capacity: '', price: '',
+        organizer_name: '', organizer_email: '', organizer_phone: '', organizer_website: ''
+    });
+    
+    const [imageFile, setImageFile] = useState(null);
+    const [existingImage, setExistingImage] = useState(null);
+
+    // 2. The Date Translator (Django ISO -> HTML Local)
+    const formatForInput = (isoString) => {
+        if (!isoString) return '';
+        const date = new Date(isoString);
+        const offset = date.getTimezoneOffset() * 60000;
+        return (new Date(date - offset)).toISOString().slice(0, 16);
+    };
+
+    // 3. Fetch Data on Load
+    useEffect(() => {
+        const fetchEvent = async () => {
+            try {
+                // Ensure this matches your Organizer Edit URL!
+                const response = await api.get(`events/me/${id}/`);
+                const data = response.data;
+                
+                setFormData({
+                    title: data.title || '',
+                    short_description: data.short_description || '',
+                    description: data.description || '',
+                    category: data.category || 'OTHER',
+                    language: data.language || 'English',
+                    age_restriction: data.age_restriction || 'All Ages',
+                    // Safely format dates for the HTML inputs
+                    start_datetime: formatForInput(data.start_datetime || data.start_time),
+                    end_datetime: formatForInput(data.end_datetime),
+                    timezone: data.timezone || 'Asia/Kolkata',
+                    event_mode: data.event_mode || 'OFFLINE',
+                    venue_name: data.venue_name || '',
+                    address: data.address || '',
+                    city: data.city || '',
+                    state: data.state || '',
+                    country: data.country || '',
+                    meeting_link: data.meeting_link || '',
+                    total_capacity: data.total_capacity || '',
+                    price: data.price ? parseFloat(data.price) : 0,
+                    organizer_name: data.organizer_name || '',
+                    organizer_email: data.organizer_email || '',
+                    organizer_phone: data.organizer_phone || '',
+                    organizer_website: data.organizer_website || ''
+                });
+                
+                // Keep track of the old image so we can display a thumbnail
+                setExistingImage(data.thumbnail || data.image);
+                
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                setError('Failed to fetch event details. It may have been deleted.');
+            } finally {
+                setIsFetching(false);
+            }
+        };
+
+        fetchEvent();
+    }, [id]);
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleFileChange = (e) => {
+        setImageFile(e.target.files[0]);
+    };
+
+    // 4. The Submission Engine (Using PATCH for partial updates)
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        
+        const submitData = new FormData();
+        
+        Object.keys(formData).forEach(key => {
+            if (formData[key] !== '' && formData[key] !== null) {
+                submitData.append(key, formData[key]);
+            }
+        });
+        
+        // ONLY append a file if they actually selected a new one!
+        if (imageFile) {
+            submitData.append('thumbnail', imageFile);
+        }
+
+        try {
+            // Use PATCH or PUT to update the specific ID
+            await api.patch(`events/me/${id}/`, submitData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            navigate('/dashboard');
+        } catch (err) {
+            console.error("API Error:", err.response?.data || err.message);
+            setError('Failed to update event. Please check your inputs.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    if (isFetching) {
+        return <div className="min-h-screen bg-gray-50 flex items-center justify-center animate-pulse text-gray-500 text-lg">Loading Event Data...</div>;
+    }
+
+    if (error && !formData.title) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+                <p className="text-red-500 font-medium mb-4">{error}</p>
+                <Link to="/dashboard" className="text-blue-600 hover:underline">&larr; Back to Dashboard</Link>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50 py-10 px-6">
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <Link to="/dashboard" className="text-sm font-medium text-gray-500 hover:text-blue-600 mb-4 inline-block">
+                        &larr; Back to Dashboard
+                    </Link>
+                    <h2 className="text-3xl font-extrabold text-gray-900">Edit Event</h2>
+                    <p className="mt-1 text-sm text-gray-500">Update the details for <span className="font-semibold text-gray-700">{formData.title}</span>.</p>
+                </div>
+
+                {error && <div className="mb-6 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>}
+
+                <form onSubmit={handleSubmit} className="space-y-8">
+                    
+                    {/* SECTION 1: Basic Information */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">1. Basic Information</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
+                                <input type="text" name="title" required value={formData.title} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Short Description (Preview)</label>
+                                <input type="text" name="short_description" value={formData.short_description} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" maxLength="255" />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Full Description *</label>
+                                <textarea name="description" rows="5" required value={formData.description} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <select name="category" value={formData.category} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white">
+                                    <option value="TECH">Technology</option>
+                                    <option value="MUSIC">Music</option>
+                                    <option value="SPORTS">Sports</option>
+                                    <option value="BUSINESS">Business</option>
+                                    <option value="WORKSHOP">Workshop</option>
+                                    <option value="OTHER">Other</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
+                                <input type="text" name="language" value={formData.language} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 2: Date & Time */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">2. Schedule</h3>
+                        {/* Notice we removed min={getMinTime()} so organizers can edit old events without date errors! */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+                                <input type="datetime-local" name="start_datetime" required value={formData.start_datetime} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                <input type="datetime-local" name="end_datetime" min={formData.start_datetime} value={formData.end_datetime} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
+                                <input type="text" name="timezone" value={formData.timezone} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 3: Location */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">3. Location</h3>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Event Mode</label>
+                            <select name="event_mode" value={formData.event_mode} onChange={handleChange} className="w-full md:w-1/3 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white">
+                                <option value="OFFLINE">Offline (In-Person)</option>
+                                <option value="ONLINE">Online (Virtual)</option>
+                                <option value="HYBRID">Hybrid</option>
+                            </select>
+                        </div>
+
+                        {formData.event_mode !== 'ONLINE' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Venue Name</label>
+                                    <input type="text" name="venue_name" value={formData.venue_name} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                                    <input type="text" name="address" value={formData.address} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                    <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">State & Country</label>
+                                    <div className="flex gap-2">
+                                        <input type="text" name="state" placeholder="State" value={formData.state} onChange={handleChange} className="w-1/2 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                        <input type="text" name="country" placeholder="Country" value={formData.country} onChange={handleChange} className="w-1/2 rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {formData.event_mode !== 'OFFLINE' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Meeting Link (Zoom, Meet, etc.)</label>
+                                <input type="url" name="meeting_link" value={formData.meeting_link} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="https://" />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SECTION 4: Ticketing & Organizer */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">4. Ticketing & Organizer</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Total Capacity *</label>
+                                <input type="number" name="total_capacity" required min="1" value={formData.total_capacity} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Ticket Price (â‚¹) *</label>
+                                <input type="number" name="price" required min="0" step="0.01" value={formData.price} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            
+                            <div className="md:col-span-2 mt-4 border-t pt-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Public Display Name (Organizer)</label>
+                                <input type="text" name="organizer_name" value={formData.organizer_name} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g., Apple Inc, TechClub" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                                <input type="email" name="organizer_email" value={formData.organizer_email} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                                <input type="url" name="organizer_website" value={formData.organizer_website} onChange={handleChange} className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="https://" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 5: Media */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">5. Media</h3>
+                        
+                        <div className="flex items-center gap-6">
+                            {existingImage && !imageFile && (
+                                <div className="h-24 w-36 rounded-md overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+                                    <img src={existingImage} alt="Current Banner" className="h-full w-full object-cover" />
+                                </div>
+                            )}
+                            
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Update Banner / Thumbnail</label>
+                                <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                                <p className="mt-1 text-xs text-gray-500">Leave empty to keep the current image.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end sticky bottom-6 z-10 bg-white p-4 rounded-xl border border-gray-200 shadow-xl">
+                        <button type="button" onClick={() => navigate('/dashboard')} className="mr-4 rounded-md border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors w-full sm:w-auto">
+                            Cancel
+                        </button>
+                        <button type="submit" disabled={isLoading} className="rounded-md bg-blue-600 px-8 py-3 text-sm font-bold text-white shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors w-full sm:w-auto">
+                            {isLoading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/EventDetails.jsx
+================================================
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function EventDetails() {
+    const { id } = useParams();
+    const navigate = useNavigate();
+    const [event, setEvent] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        const fetchEventDetails = async () => {
+            try {
+                const response = await api.get(`events/${id}/`);
+                setEvent(response.data);
+            } catch (err) {
+                console.error(err);
+                setError('Failed to load event details. It may have been deleted or moved.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchEventDetails();
+    }, [id]);
+
+    if (loading) {
+        return <div className="min-h-screen bg-gray-50 flex items-center justify-center animate-pulse text-gray-500">Loading Event Experience...</div>;
+    }
+
+    if (error || !event) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+                <p className="text-red-500 font-medium mb-4">{error}</p>
+                <Link to="/" className="text-blue-600 hover:underline">&larr; Back to Events</Link>
+            </div>
+        );
+    }
+
+    // --- DATA NORMALIZATION ---
+    // Safely handling both the old schema and the new schema
+    const imageSrc = event.thumbnail || event.image;
+    const startTime = new Date(event.start_datetime || event.start_time || event.date);
+    const endTime = event.end_datetime ? new Date(event.end_datetime) : null;
+    const isExpired = startTime < new Date();
+    
+    const capacity = event.total_capacity || event.total_tickets || 0;
+    const booked = event.tickets_sold || 0; 
+    const isSoldOut = booked >= capacity;
+    const price = event.price ? parseFloat(event.price) : 0;
+    
+    const eventMode = event.event_mode || 'OFFLINE';
+
+    return (
+        <div className="min-h-screen bg-white">
+            {/* 1. HERO BANNER */}
+            <div className="relative h-72 sm:h-96 w-full bg-gray-900">
+                {imageSrc ? (
+                    <img src={imageSrc} alt={event.title} className="h-full w-full object-cover opacity-50" />
+                ) : (
+                    <div className="h-full w-full flex items-center justify-center bg-gray-800 opacity-60"></div>
+                )}
+                
+                <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/60 to-transparent"></div>
+                
+                <div className="absolute bottom-0 left-0 w-full p-8 max-w-7xl mx-auto">
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wide ${isExpired ? 'bg-gray-600 text-white' : 'bg-blue-600 text-white'}`}>
+                            {isExpired ? 'Past Event' : 'Upcoming'}
+                        </span>
+                        {event.category && (
+                            <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm text-white text-xs font-bold rounded-full uppercase tracking-wide border border-white/30">
+                                {event.category}
+                            </span>
+                        )}
+                        <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm text-white text-xs font-bold rounded-full uppercase tracking-wide border border-white/30">
+                            {eventMode}
+                        </span>
+                    </div>
+                    
+                    <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-2">
+                        {event.title || event.name}
+                    </h1>
+                    
+                    {event.short_description && (
+                        <p className="text-lg text-gray-300 max-w-3xl line-clamp-2">
+                            {event.short_description}
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            {/* 2. EVENT CONTENT GRID */}
+            <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-3 gap-12">
+                
+                {/* Left Column: Details */}
+                <div className="lg:col-span-2 space-y-10">
+                    
+                    {/* Key Info Pills */}
+                    <div className="flex flex-wrap gap-4 border-b border-gray-100 pb-8">
+                        <div className="flex items-center text-gray-700 bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
+                            <svg className="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+                            <span className="text-sm font-medium">{event.language || 'English'}</span>
+                        </div>
+                        <div className="flex items-center text-gray-700 bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
+                            <svg className="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                            <span className="text-sm font-medium">{event.age_restriction || 'All Ages'}</span>
+                        </div>
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-4">About this event</h2>
+                        <div className="prose prose-blue text-gray-600 whitespace-pre-wrap">
+                            {event.description || 'No description provided by the organizer.'}
+                        </div>
+                    </div>
+
+                    {/* Organizer Section */}
+                    {event.organizer_name && (
+                        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+                            <h2 className="text-lg font-bold text-gray-900 mb-4">Organizer</h2>
+                            <p className="font-semibold text-gray-900 text-xl">{event.organizer_name}</p>
+                            <div className="mt-3 space-y-2 text-sm text-gray-600">
+                                {event.organizer_email && <p className="flex items-center"><span className="font-medium mr-2">Email:</span> <a href={`mailto:${event.organizer_email}`} className="text-blue-600 hover:underline">{event.organizer_email}</a></p>}
+                                {event.organizer_website && <p className="flex items-center"><span className="font-medium mr-2">Website:</span> <a href={event.organizer_website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{event.organizer_website}</a></p>}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Column: Checkout Card */}
+                <div className="lg:col-span-1">
+                    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 sticky top-8">
+                        
+                        {/* Price Tag */}
+                        <div className="mb-6 border-b border-gray-100 pb-6">
+                            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Ticket Price</p>
+                            <p className="text-4xl font-extrabold text-gray-900 mt-1">
+                                {price === 0 ? 'FREE' : `â‚¹${price}`}
+                            </p>
+                        </div>
+
+                        {/* Date & Time Block */}
+                        <div className="space-y-4 mb-6 border-b border-gray-100 pb-6">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Date & Time</h3>
+                            <div className="flex items-start text-gray-600">
+                                <svg className="w-5 h-5 mr-3 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                <div>
+                                    <p className="font-medium text-gray-900">{startTime.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                                    <p className="text-sm">{startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} {endTime && `- ${endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</p>
+                                    <p className="text-xs text-gray-400 mt-1">{event.timezone || 'Local Time'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Location Block */}
+                        <div className="space-y-4 mb-8">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Location</h3>
+                            
+                            {eventMode === 'ONLINE' ? (
+                                <div className="flex items-start text-gray-600">
+                                    <svg className="w-5 h-5 mr-3 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                    <div>
+                                        <p className="font-medium text-gray-900">Online Event</p>
+                                        <p className="text-sm text-gray-500">Access link will be provided upon registration.</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-start text-gray-600">
+                                    <svg className="w-5 h-5 mr-3 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                    <div>
+                                        {event.venue_name && <p className="font-medium text-gray-900">{event.venue_name}</p>}
+                                        {event.address && <p className="text-sm text-gray-600">{event.address}</p>}
+                                        <p className="text-sm text-gray-600">
+                                            {[event.city, event.state, event.country].filter(Boolean).join(', ')}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Booking Button Logic */}
+                        {isExpired ? (
+                            <button disabled className="w-full py-4 rounded-xl font-bold text-white bg-gray-400 cursor-not-allowed">
+                                Event Has Ended
+                            </button>
+                        ) : isSoldOut ? (
+                            <button disabled className="w-full py-4 rounded-xl font-bold text-white bg-red-500 cursor-not-allowed">
+                                Sold Out
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={() => navigate(`/event/${event.id}/seats`)}
+                                className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5"
+                            >
+                                Get Tickets
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/Home.jsx
+================================================
+import { useState, useEffect, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import api from '../api/axios';
+import { AuthContext } from '../context/AuthContext';
+
+export default function Home() {
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    
+    const navigate = useNavigate();
+    
+    // Bring in the user state and logout function
+    const { user, logout } = useContext(AuthContext);
+
+    useEffect(() => {
+        const fetchPublicEvents = async () => {
+            try {
+                const response = await api.get('events/');
+                const eventData = response.data.results ? response.data.results : response.data;
+                setEvents(Array.isArray(eventData) ? eventData : []);
+            } catch (err) {
+                console.error(err);
+                setError('Failed to load events. Please try again later.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPublicEvents();
+    }, []);
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login'); // Keep them on the homepage, just refresh their state
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="animate-pulse text-gray-500 font-medium text-lg tracking-wide">
+                    Discovering upcoming events...
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
+    }
+
+    const activeEvents = events.filter(event => new Date(event.start_datetime || event.start_time || event.date) >= new Date());
+
+    return (
+        <div className="min-h-screen bg-white">
+            
+            {/* NEW: SMART NAVBAR */}
+            <nav className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex justify-between items-center">
+                <div className="text-white font-bold text-xl tracking-tight">Ticketing Hub</div>
+                <div>
+                    {user ? (
+                        <div className="flex items-center gap-4">
+                            
+                            {/* ONLY SHOW DASHBOARD BUTTON TO ORGANIZERS */}
+                            {user.role === 'ORGANIZER' && (
+                                <Link 
+                                    to="/dashboard" 
+                                    className="text-sm font-semibold text-gray-900 bg-white hover:bg-gray-100 px-4 py-2 rounded-lg transition-colors"
+                                >
+                                    Dashboard
+                                </Link>
+                            )}
+                            
+                            <button 
+                                onClick={handleLogout} 
+                                className="text-sm font-semibold text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors"
+                            >
+                                Log Out
+                            </button>
+                        </div>
+                    ) : (
+                        <Link 
+                            to="/login" 
+                            className="text-sm font-semibold text-gray-900 bg-white hover:bg-gray-100 px-5 py-2.5 rounded-lg transition-colors"
+                        >
+                            Log In
+                        </Link>
+                    )}
+                </div>
+            </nav>
+
+            {/* HERO SECTION */}
+            <div className="bg-gray-900 py-20 sm:py-28">
+                <div className="mx-auto max-w-7xl px-6 lg:px-8 text-center">
+                    <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-6xl">
+                        Find your next experience.
+                    </h1>
+                    <p className="mt-6 text-lg leading-8 text-gray-300 max-w-2xl mx-auto">
+                        Discover tech conferences, music festivals, and exclusive workshops happening around you. Secure your spot before they sell out.
+                    </p>
+                    
+                    {/* SMART BUTTON LOGIC */}
+                    <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+                        <p className="text-md text-gray-400">
+                            Hosting something unforgettable?
+                        </p>
+                        
+                        {!user ? (
+                            <Link to="/login" className="text-sm font-semibold leading-6 text-white hover:text-blue-400 transition-colors">
+                                Organizer Login <span aria-hidden="true">â†’</span>
+                            </Link>
+                        ) : user.role === 'ORGANIZER' ? (
+                            <Link to="/dashboard" className="text-sm font-semibold leading-6 text-blue-400 hover:text-blue-300 transition-colors">
+                                Go to Dashboard <span aria-hidden="true">â†’</span>
+                            </Link>
+                        ) : (
+                            <Link to="/apply" className="text-sm font-bold leading-6 text-blue-400 hover:text-blue-300 transition-colors">
+                                Become an Organizer <span aria-hidden="true">â†’</span>
+                            </Link>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* EVENT GRID */}
+            <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
+                <div className="flex justify-between items-center mb-10">
+                    <h2 className="text-3xl font-bold tracking-tight text-gray-900">Upcoming Events</h2>
+                    <span className="text-gray-500 text-sm font-medium">{activeEvents.length} events found</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+                    {activeEvents.map((event) => {
+                        const eventTime = new Date(event.start_datetime || event.start_time || event.date);
+                        const price = event.price ? parseFloat(event.price) : 0;
+                        const imageSrc = event.thumbnail || event.image;
+                        const locationText = event.event_mode === 'ONLINE' 
+                            ? 'Online Event' 
+                            : (event.city ? `${event.city}${event.state ? `, ${event.state}` : ''}` : 'Location TBA');
+
+                        return (
+                            <div 
+                                key={event.id} 
+                                onClick={() => navigate(`/event/${event.id}`)}
+                                className="group relative cursor-pointer flex flex-col bg-white rounded-2xl border border-gray-100 hover:border-blue-100 hover:shadow-xl transition-all duration-300 overflow-hidden"
+                            >
+                                {/* Image Container */}
+                                <div className="aspect-[16/9] w-full overflow-hidden bg-gray-100 relative">
+                                    {imageSrc ? (
+                                        <img
+                                            src={imageSrc}
+                                            alt={event.title}
+                                            className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center text-gray-400 text-sm bg-gray-50">
+                                            Event Banner
+                                        </div>
+                                    )}
+                                    
+                                    {/* Top Left Badges */}
+                                    <div className="absolute top-4 left-4 flex gap-2">
+                                        {event.category && (
+                                            <span className="bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded text-xs font-bold text-gray-800 shadow-sm uppercase tracking-wider">
+                                                {event.category}
+                                            </span>
+                                        )}
+                                        {event.event_mode === 'ONLINE' && (
+                                            <span className="bg-blue-600/90 backdrop-blur-sm px-2.5 py-1 rounded text-xs font-bold text-white shadow-sm uppercase tracking-wider">
+                                                Online
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Price Tag */}
+                                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-bold text-gray-900 shadow-sm">
+                                        {price === 0 ? 'FREE' : `â‚¹${price}`}
+                                    </div>
+                                </div>
+
+                                {/* Content */}
+                                <div className="p-6 flex-1 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center text-sm font-semibold text-blue-600 mb-2">
+                                            <span>{eventTime.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                            <span className="mx-2">â€¢</span>
+                                            <span>{eventTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        
+                                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                                            {event.title || event.name}
+                                        </h3>
+                                        
+                                        <p className="mt-3 text-sm text-gray-500 line-clamp-2">
+                                            {event.short_description || event.description || 'Join us for this amazing event.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-5 pt-4 border-t border-gray-50 flex items-center text-sm text-gray-500 font-medium">
+                                        <svg className="w-4 h-4 mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        <span className="truncate">{locationText}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {activeEvents.length === 0 && (
+                    <div className="text-center py-20">
+                        <h3 className="text-lg font-semibold text-gray-900">No upcoming events</h3>
+                        <p className="mt-1 text-gray-500">Check back later for new experiences.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/Login.jsx
+================================================
+import { useState, useContext } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import { GoogleLogin } from '@react-oauth/google';
+import api from '../api/axios';
+
+export default function Login() {
+    const [username, setUserName] = useState('');
+    const [password, setPassword] = useState('');
+
+    const [error, setError] = useState('');
+    const [isLoading, setLoading] = useState(false);
+
+    const { login, setUser } = useContext(AuthContext); 
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            
+            // NOTE: Ensure your AuthContext login() function returns the user object!
+            const loggedInUser = await login(username, password);
+            console.log("STANDARD LOGIN USER DATA:", loggedInUser);
+            // Conditionally route based on role
+            if (loggedInUser?.role === 'ORGANIZER') {
+                navigate('/dashboard');
+            } else {
+                navigate('/');
+            }
+
+        } catch (err) {
+            setError('Invalid credentials');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+            <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-lg border border-gray-100">
+                
+                <div className="text-center">
+                    <h2 className="text-3xl font-extrabold text-gray-900">Welcome Back</h2>
+                    <p className="mt-2 text-sm text-gray-600">Sign in to your account</p>
+                </div>
+
+                {error && (
+                    <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">
+                        {error}
+                    </div>
+                )}
+
+                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Username</label>
+                            <input
+                                type="text"
+                                required
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                placeholder="Enter your username"
+                                value={username}
+                                onChange={(e) => setUserName(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Password</label>
+                            <input
+                                type="password"
+                                required
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {isLoading ? 'Signing in...' : 'Sign In'}
+                    </button>
+                    <p className="mt-4 text-center text-sm text-gray-600">
+                        Don't have an account? <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">Sign up</Link>
+                    </p>
+                </form>
+                
+                <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-200"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                        <span className="bg-white px-2 text-gray-500">Or continue with</span>
+                    </div>
+                </div>
+                
+                <div className="flex justify-center w-full">
+                    <GoogleLogin
+                        onSuccess={async (credentialResponse) => {
+                            setError('');
+                            setLoading(true);
+                            try {
+                                const res = await api.post('auth/google/', {
+                                    credential: credentialResponse.credential
+                                });
+                                console.log("GOOGLE API RESPONSE:", res.data);
+                                console.log("ROLE DETECTED AS:", res.data.user?.role);
+                                localStorage.setItem('access', res.data.access);
+                                localStorage.setItem('refresh', res.data.refresh);
+                                localStorage.setItem('user', JSON.stringify(res.data.user)); 
+                                
+                                if (setUser) {
+                                    setUser(res.data.user);
+                                }
+                                
+                                // SMART ROUTING FOR GOOGLE LOGIN
+                                setTimeout(() => {
+                                    if (res.data.user.role === 'ORGANIZER') {
+                                        navigate('/dashboard');
+                                    } else {
+                                        navigate('/');
+                                    }
+                                }, 100);
+
+                            }
+                            catch (err) {
+                                console.error("DJANGO REJECTION REASON:", err.response?.data || err.message);
+                                setError('Google authentication failed on our server.');
+                            }
+                            finally {
+                                setLoading(false);
+                            }
+                        }}
+                        onError={() => {
+                            setError('Google Login window closed or failed.');
+                        }}
+                        useOneTap 
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/Register.jsx
+================================================
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function Register() {
+    const [formData, setFormData] = useState({ username: '', email: '', password: '', confirmPassword: '' });
+    const [error, setError] = useState('');
+    const [isLoading, setLoading] = useState(false);
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        // 1. Check if passwords match before bothering the server
+        if (formData.password !== formData.confirmPassword) {
+            return setError("Passwords do not match!");
+        }
+
+        setLoading(true);
+        try {
+            // 2. Send the data to your new Django endpoint
+            await api.post('auth/register/', {
+                username: formData.username,
+                email: formData.email,
+                password: formData.password
+            });
+            
+            // 3. If successful, send them to the login page!
+            navigate('/login', { state: { message: "Account created successfully! Please log in." } });
+        } catch (err) {
+            // Grab the exact error from Django (e.g., "Username already exists")
+            const backendError = err.response?.data;
+            const errorMsg = backendError ? Object.values(backendError)[0][0] : 'Registration failed.';
+            setError(errorMsg);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+            <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-lg border border-gray-100">
+                <div className="text-center">
+                    <h2 className="text-3xl font-extrabold text-gray-900">Create an Account</h2>
+                    <p className="mt-2 text-sm text-gray-600">Join our ticketing platform today</p>
+                </div>
+
+                {error && (
+                    <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">
+                        {error}
+                    </div>
+                )}
+
+                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                    <div className="space-y-4">
+                        <input
+                            type="text" required placeholder="Username"
+                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            value={formData.username}
+                            onChange={(e) => setFormData({...formData, username: e.target.value})}
+                        />
+                        <input
+                            type="email" required placeholder="Email Address"
+                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        />
+                        <input
+                            type="password" required placeholder="Password"
+                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            value={formData.password}
+                            onChange={(e) => setFormData({...formData, password: e.target.value})}
+                        />
+                        <input
+                            type="password" required placeholder="Confirm Password"
+                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            value={formData.confirmPassword}
+                            onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                        />
+                    </div>
+
+                    <button
+                        type="submit" disabled={isLoading}
+                        className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {isLoading ? 'Creating account...' : 'Sign Up'}
+                    </button>
+                </form>
+
+                <p className="mt-4 text-center text-sm text-gray-600">
+                    Already have an account? <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">Sign in</Link>
+                </p>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/pages/SeatMap.jsx
+================================================
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import api from '../api/axios';
+
+export default function SeatMap() {
+    const { id: eventId } = useParams();
+    const navigate = useNavigate();
+
+    const [event, setEvent] = useState(null);
+    const [tickets, setTickets] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [lockingSeatId, setLockingSeatId] = useState(null);
+
+    // OPTIMIZATION 1: Fetch from localStorage ONCE, not inside the loop
+    const currentUserEmail = useMemo(() => {
+        try {
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+                const userObj = JSON.parse(userStr);
+                return userObj.email;
+            }
+            return null;
+        } catch (e) {
+            return null;
+        }
+    }, []);
+
+    useEffect(() => {
+        const fetchSeatMapData = async () => {
+            try {
+                const [eventRes, ticketsRes] = await Promise.all([
+                    api.get(`events/${eventId}/`),
+                    api.get(`events/${eventId}/tickets/`)
+                ]);
+                
+                setEvent(eventRes.data);
+                setTickets(Array.isArray(ticketsRes.data) ? ticketsRes.data : []);
+            } catch (err) {
+                console.error("API Error:", err);
+                setError('Failed to load the seat map. Please refresh the page.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchSeatMapData();
+    }, [eventId]);
+
+    // OPTIMIZATION 2: useCallback keeps the function reference stable
+    const handleSeatClick = useCallback(async (ticket) => {
+        if (ticket.status !== 'AVAILABLE' || lockingSeatId) return;
+
+        setError('');
+        setLockingSeatId(ticket.id);
+
+        try {
+            const response = await api.post(`tickets/${ticket.id}/lock/`);
+            console.log("LOCK ACQUIRED:", response.data.expires_at);
+            navigate(`/checkout/${ticket.id}`);
+        } catch (err) {
+            const serverMessage = err.response?.data?.error;
+            setError(serverMessage || "This seat was just locked by another user! Please select a different seat.");
+            
+            // Refresh tickets to show what changed
+            try {
+                const refreshRes = await api.get(`events/${eventId}/tickets/`);
+                setTickets(Array.isArray(refreshRes.data) ? refreshRes.data : []);
+            } catch (refreshErr) {
+                console.error("Failed to refresh tickets", refreshErr);
+            }
+        } finally {
+            setLockingSeatId(null);
+        }
+    }, [eventId, lockingSeatId, navigate]);
+
+    // OPTIMIZATION 3: useMemo prevents recalculating the grid unless tickets or locking state changes
+    const seatGrid = useMemo(() => {
+        return tickets.map((ticket) => {
+            const isAvailable = ticket.status === 'AVAILABLE';
+            const isBooked = ticket.status === 'BOOKED';
+            const isReserved = ticket.status === 'RESERVED';
+            
+            // Check ownership using the cached email
+            const isMine = isReserved && ticket.user_email === currentUserEmail;
+            const isLocking = lockingSeatId === ticket.id;
+
+            let seatClasses = "relative flex items-center justify-center aspect-square rounded-lg font-bold text-sm transition-all duration-150 border-2 shadow-sm outline-none";
+
+            if (isBooked) {
+                seatClasses += " bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed";
+            } else if (isReserved && !isMine) {
+                seatClasses += " bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed";
+            } else if (isMine) {
+                seatClasses += " bg-blue-100 border-blue-500 text-blue-700 hover:bg-blue-200 cursor-pointer scale-105";
+            } else {
+                seatClasses += " bg-white border-gray-200 text-gray-700 hover:bg-green-50 hover:border-green-400 hover:text-green-800 hover:scale-105 cursor-pointer";
+            }
+
+            if (isLocking) {
+                seatClasses += " cursor-wait";
+            }
+
+            return (
+                <button 
+                    key={ticket.id} 
+                    disabled={!isAvailable || lockingSeatId}
+                    onClick={() => handleSeatClick(ticket)}
+                    className={seatClasses}
+                    title={`Seat ${ticket.seat_number} (${ticket.status})`}
+                >
+                    {isLocking ? (
+                        <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin"></div>
+                    ) : isBooked || (isReserved && !isMine) ? (
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    ) : (
+                        ticket.seat_number
+                    )}
+                </button>
+            );
+        });
+    }, [tickets, lockingSeatId, handleSeatClick, currentUserEmail]);
+
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Initializing seat map grid...</div>;
+    }
+
+    if (!event) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+                <div className="text-center">
+                    <p className="text-red-500 font-medium mb-4">{error || 'Event not found.'}</p>
+                    <Link to="/" className="text-blue-600 hover:underline">&larr; Back to Events</Link>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50 pb-16">
+            <header className="bg-white border-b border-gray-100 p-6 shadow-sm sticky top-0 z-10">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    <div>
+                        <Link to={`/event/${eventId}`} className="text-sm font-medium text-blue-600 hover:underline">
+                            &larr; Back to Details
+                        </Link>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mt-1">
+                            Select Seat: <span className="text-gray-600">{event.title}</span>
+                        </h1>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-500">PRICE PER SEAT</p>
+                        <p className="text-3xl font-extrabold text-gray-900 mt-1">â‚¹{event.price}</p>
+                    </div>
+                </div>
+            </header>
+
+            <main className="max-w-7xl mx-auto p-6 md:p-12">
+                {error && (
+                    <div className="mb-8 p-4 rounded-xl bg-red-50 text-red-700 border border-red-200 font-medium text-sm flex items-start">
+                        <svg className="w-5 h-5 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"></path></svg>
+                        {error}
+                    </div>
+                )}
+
+                <div className="bg-white p-8 md:p-12 rounded-2xl shadow-xl border border-gray-100">
+                    <div className="mb-16 text-center">
+                        <div className="w-3/4 mx-auto h-2 bg-gray-300 rounded-full"></div>
+                        <p className="text-xs text-gray-400 mt-2 font-semibold uppercase tracking-widest">STAGE / SCREEN</p>
+                    </div>
+
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                        {/* We just render the memoized grid here */}
+                        {seatGrid}
+                    </div>
+                </div>
+
+                <div className="mt-12 p-6 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center gap-8 text-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-md bg-white border-2 border-gray-200"></div>
+                        <span className="text-gray-600 font-medium">Available</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-md bg-gray-200 border-2 border-gray-300 flex items-center justify-center text-gray-400">
+                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </div>
+                        <span className="text-gray-600 font-medium">Taken</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-md bg-blue-100 border-2 border-blue-500"></div>
+                        <span className="text-gray-600 font-medium">Your Selection (Locked)</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    );
+}
+
+
+================================================
+FILE: ticketing/__init__.py
+================================================
+[Empty file]
+
+
+================================================
+FILE: ticketing/admin.py
+================================================
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from .models import User, Event, OrganizerApplication
+
+# 1. We customize the User admin so your new 'role' dropdown actually shows up!
+class CustomUserAdmin(UserAdmin):
+    fieldsets = UserAdmin.fieldsets + (
+        ('Role Management', {'fields': ('role',)}),
+    )
+
+# 2. Register all the tables to the dashboard
+admin.site.register(User, CustomUserAdmin)
+admin.site.register(OrganizerApplication)
+admin.site.register(Event)
+
+
+================================================
+FILE: ticketing/apps.py
+================================================
+from django.apps import AppConfig
+
+
+class TicketingConfig(AppConfig):
+    name = 'ticketing'
+
+
+
+================================================
+FILE: ticketing/models.py
+================================================
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
+import uuid
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+# 1. Custom User Model for Role-Gated Access
+class User(AbstractUser):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    ROLE_CHOICES = (
+        ('CUSTOMER', 'Customer'),
+        ('ORGANIZER', 'Organizer'),
+    )
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CUSTOMER')
+    
+    def __str__(self):
+        return self.username
+# 2. Event Model
+class Event(models.Model):
+    # Core Identifiers
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    short_description = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Categorization
+    CATEGORY_CHOICES = (
+        ('TECH', 'Technology'), ('MUSIC', 'Music'), ('SPORTS', 'Sports'), 
+        ('BUSINESS', 'Business'), ('WORKSHOP', 'Workshop'), ('OTHER', 'Other')
+    )
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='OTHER')
+    language = models.CharField(max_length=50, default='English')
+    age_restriction = models.CharField(max_length=50, default='All Ages', help_text="e.g., 18+, 21+, All Ages")
+    
+    # Media
+    thumbnail = models.ImageField(upload_to='event_covers/', null=True, blank=True)
+    
+    # Date & Time
+    start_time = models.DateTimeField()
+    end_datetime = models.DateTimeField(null=True, blank=True)
+    timezone = models.CharField(max_length=100, default='UTC', help_text="e.g., Asia/Kolkata, UTC")
+    
+    # Location & Mode
+    MODE_CHOICES = (('ONLINE', 'Online'), ('OFFLINE', 'Offline'), ('HYBRID', 'Hybrid'))
+    event_mode = models.CharField(max_length=20, choices=MODE_CHOICES, default='OFFLINE')
+    venue_name = models.CharField(max_length=255, null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    state = models.CharField(max_length=100, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    meeting_link = models.URLField(max_length=500, null=True, blank=True) # For Online/Hybrid
+    
+    # Ticketing Math
+    total_capacity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    
+    # Organizer Information (Linked user + display details)
+    organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='organized_events')
+    organizer_name = models.CharField(max_length=255, null=True, blank=True)
+    organizer_email = models.EmailField(null=True, blank=True)
+    organizer_phone = models.CharField(max_length=20, null=True, blank=True)
+    organizer_website = models.URLField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return self.title
+class Booking(models.Model):
+    class StatusChoices(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        SUCCESS = 'SUCCESS', 'Success'
+        FAILED = 'FAILED', 'Failed'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')
+    status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.PENDING)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    tickets_count = models.PositiveIntegerField(default=1) # How many tickets they bought
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    # --- RAZORPAY TRACKING FIELDS ---
+    razorpay_order_id = models.CharField(max_length=100, null=True, blank=True)
+    razorpay_payment_id = models.CharField(max_length=100, null=True, blank=True)
+    razorpay_signature = models.CharField(max_length=255, null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Booking {self.id} by {self.user.username}"
+class OrganizerApplication(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING','pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    )
+    user = models.OneToOneField(User,on_delete = models.CASCADE,related_name='organizer_application')    
+    company_name = models.CharField(max_length=255)
+    tax_id_or_website = models.CharField(max_length=255)
+    status=models.CharField(max_length=20,choices=STATUS_CHOICES,default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    def save(self, *args, **kwargs):
+        # Check if the object already exists in the database
+        if self.pk is not None:
+            # Get the old version from the database
+            old_version = OrganizerApplication.objects.get(pk=self.pk)
+            # If it just changed to APPROVED...
+            if old_version.status != 'APPROVED' and self.status == 'APPROVED':
+                # Upgrade the user!
+                self.user.role = 'ORGANIZER'
+                self.user.save()
+        
+        super().save(*args, **kwargs)
+    def __str__(self):
+        return f"{self.company_name} - {self.status}"
+
+# 4. Ticket Model (Where the Concurrency Magic Happens)
+class Ticket(models.Model):
+    class StatusChoices(models.TextChoices):
+        AVAILABLE = 'AVAILABLE', 'Available'
+        RESERVED = 'RESERVED', 'Reserved'
+        BOOKED = 'BOOKED', 'Booked'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='tickets')
+    seat_number = models.CharField(max_length=10)
+    status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.AVAILABLE)
+    reserved_until = models.DateTimeField(null=True, blank=True)
+    
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    booking = models.ForeignKey(Booking, null=True, blank=True, on_delete=models.SET_NULL, related_name='tickets')
+
+    class Meta:
+        unique_together = ('event', 'seat_number')
+        indexes = [
+            models.Index(fields=['status', 'event']),
+        ]
+
+    def __str__(self):
+        return f"{self.event.title} - Seat {self.seat_number}"
+@receiver(post_save, sender=Event)
+def create_tickets_for_event(sender, instance, created, **kwargs):
+    if created:
+        # Notice we changed '_' to 'i', and range to start at 1
+        tickets_to_create = [
+            Ticket(
+                event=instance, 
+                seat_number=str(i), # Assigns "1", "2", "3", etc.
+                status='AVAILABLE'
+            )
+            for i in range(1, instance.total_capacity + 1)
+        ]
+        
+        Ticket.objects.bulk_create(tickets_to_create)
+
+
+
+
+================================================
+FILE: ticketing/serializers.py
+================================================
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import Event, Ticket,User
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+User = get_user_model()
+
+class EventSerializer(serializers.ModelSerializer):
+    organizer_name = serializers.CharField(source='organizer.username',read_only=True)
+
+    class Meta:
+        model = Event
+        fields = '__all__'
+        read_only_fields = ['organizer', 'tickets_sold']
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        # Get the standard token with the user_id
+        token = super().get_token(user)
+
+        # Add your custom claims (data) to the token payload!
+        token['role'] = user.role
+        token['email'] = user.email
+        token['username'] = user.username
+
+        return token
+class TicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ticket
+        fields = ['id','seat_number','status']     
+
+class RegisterSerializer(serializers.ModelSerializer):
+    # Make password write-only so it never accidentally gets sent back to the frontend!
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password')
+
+    def create(self, validated_data):
+        # create_user is a magic Django function that automatically hashes the password!
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password']
+            # Notice we don't set the role here! 
+            # Your models.py default='CUSTOMER' handles that securely for us.
+        )
+        return user
+
+
+
+================================================
+FILE: ticketing/tasks.py
+================================================
+# ticketing/tasks.py
+from celery import shared_task
+from django.core.mail import send_mail
+from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+@shared_task
+def send_ticket_confirmation(user_email, event_title, seat_number, booking_id):
+    logger.info(f"Starting background email task for {user_email}...")
+    
+    subject = f"Your Ticket for {event_title} is Confirmed!"
+    message = f"""
+    Hello!
+    
+    Your payment was successful. Your seat is officially locked in!
+    
+    Event: {event_title}
+    Seat Number: {seat_number}
+    Booking Reference: {booking_id}
+    
+    See you at the event!
+    """
+    
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[user_email],
+            fail_silently=False,
+        )
+        return f"Success: Email sent to {user_email}"
+    except Exception as e:
+        logger.error(f"Failed to send email to {user_email}: {str(e)}")
+        return "Failed"
+
+
+================================================
+FILE: ticketing/tests.py
+================================================
+from django.test import TestCase
+
+# Create your tests here.
+
+
+
+================================================
+FILE: ticketing/urls.py
+================================================
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    EventViewSet, GoogleLoginView, SubmitApplicationView, 
+    ApproveApplicationView, RegisterView, PublicEventListView, 
+    OrganizerEventsView, OrganizerEventDetailView, CustomTokenObtainPairView,
+    LockSeatView, ConfirmSeatView ,TicketStatusView
+)
+router = DefaultRouter()
+router.register(r'events', EventViewSet, basename='event')
+
+urlpatterns = [
+    # 1. SPECIFIC AUTH ROUTES
+    path('auth/google/', GoogleLoginView.as_view(), name='google-login'),
+    path('auth/register/', RegisterView.as_view(), name='register'),
+    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    
+    path('events/me/', OrganizerEventsView.as_view(), name='my-events'),
+    path('events/', PublicEventListView.as_view(), name='public-events'),
+    path('events/me/<uuid:pk>/', OrganizerEventDetailView.as_view(), name='my-event-detail'),
+    
+    path('tickets/<uuid:ticket_id>/lock/', LockSeatView.as_view(), name='lock-seat'),
+    path('tickets/<uuid:ticket_id>/confirm/', ConfirmSeatView.as_view(), name='confirm-seat'),
+    path('tickets/<uuid:ticket_id>/status/', TicketStatusView.as_view(), name='ticket-status'), 
+    # 4. ADMIN ROUTES
+    path('apply/', SubmitApplicationView.as_view(), name='submit_application'),
+    path('admin/applications/<int:application_id>/approve/', ApproveApplicationView.as_view(), name='approve_application'),
+    
+    # 5. THE CATCH-ALL ROUTER
+    path('', include(router.urls)),
+]
+
+
+================================================
+FILE: ticketing/views.py
+================================================
+import logging
+from rest_framework.response import Response
+from django.core.cache import cache
+from django.db import transaction
+from django.db import models
+from django.shortcuts import render,get_object_or_404
+from .models import Event,Ticket,User,Booking
+from .serializers import EventSerializer,TicketSerializer,RegisterSerializer,EventSerializer
+from rest_framework.views import APIView
+from rest_framework import viewsets, permissions, status,generics
+from rest_framework.decorators import action
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated, IsAdminUser , AllowAny
+from .models import OrganizerApplication,Event
+from django.conf import settings
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer
+from django.utils import timezone
+from .tasks import send_ticket_confirmation
+from datetime import timedelta
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+class GoogleLoginView(APIView):
+    permission_classes = []
+    
+    def post(self, request):
+        token = request.data.get('credential')
+
+        try:
+            CLIENT_ID = "357139621858-hcq3etulbdanlc0hrfcuv2nmekqhcs2r.apps.googleusercontent.com"
+            idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), CLIENT_ID)
+            email = idinfo['email']
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+
+            user, created = User.objects.get_or_create(
+                username=email, 
+                defaults={'email': email, 'first_name': first_name, 'last_name': last_name}
+            )
+            refresh = RefreshToken.for_user(user)
+            
+            # --- UPDATED THIS DICTIONARY BELOW ---
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'is_new_user': created,
+                'user': {
+                    'id': str(user.id),
+                    'username': user.username,
+                    'email': user.email,
+                    'role': user.role,
+                }
+            }, status=status.HTTP_200_OK)
+            # -------------------------------------
+            
+        except Exception as e:
+            print("GOOGLE AUTH ERROR:", str(e))
+
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+class IsOrganizerOrReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(request.user and request.user.is_authenticated and request.user.is_organizer)
+
+from django.utils import timezone
+from datetime import timedelta
+
+# --- UPDATE THIS EXISTING VIEW ---
+class EventViewSet(viewsets.ModelViewSet):
+    queryset = Event.objects.all()
+    serializer_class = EventSerializer
+    permission_classes = [IsOrganizerOrReadOnly]
+
+    def perform_create(self, serializer):
+        serializer.save(organizer=self.request.user)
+        
+    @action(detail=True, methods=['get'])    
+    def tickets(self, request, pk=None):
+        event = self.get_object()
+        
+        # 1. CLEANUP EXPIRED LOCKS BEFORE SENDING TO REACT
+        # If any seat's 5-minute timer is up, release it back to the public!
+        expired_tickets = Ticket.objects.filter(
+            event=event, 
+            status='RESERVED', 
+            reserved_until__lt=timezone.now()
+        )
+        expired_tickets.update(status='AVAILABLE', user=None, reserved_until=None)
+
+        # 2. Send ALL tickets to React so we can draw the physical Seat Map Grid
+        all_tickets = Ticket.objects.filter(event=event).order_by(
+            models.functions.Cast('seat_number', models.IntegerField())
+        )
+        serializer = TicketSerializer(all_tickets, many=True)
+        return Response(serializer.data)
+class SubmitApplicationView(APIView):
+    permission_classes = [IsAuthenticated] 
+
+    def post(self, request):
+        user = request.user
+        
+        if hasattr(user, 'organizer_application'):
+            return Response({"error": "You have already submitted an application."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if user.role == 'ORGANIZER':
+            return Response({"error": "You are already an organizer!"}, status=status.HTTP_400_BAD_REQUEST)
+
+        application = OrganizerApplication.objects.create(
+            user=user,
+            company_name=request.data.get('company_name'),
+            tax_id_or_website=request.data.get('tax_id_or_website')
+        )
+        
+        return Response({"message": "Application submitted successfully! Please wait for admin approval."}, status=status.HTTP_201_CREATED)
+    
+
+class ApproveApplicationView(APIView):
+    permission_classes = [IsAdminUser] 
+
+    def post(self, request, application_id):
+        try:
+            application = OrganizerApplication.objects.get(id=application_id)
+            
+            if application.status == 'APPROVED':
+                return Response({"error": "Already approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+            application.status = 'APPROVED'
+            application.save()
+
+            user = application.user
+            user.role = 'ORGANIZER' 
+            user.save()
+
+            return Response({
+                "message": f"Success! {user.email} is now an Organizer."
+            }, status=status.HTTP_200_OK)
+
+        except OrganizerApplication.DoesNotExist:
+            return Response({"error": "Application not found."}, status=status.HTTP_404_NOT_FOUND)    
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = [AllowAny] 
+    serializer_class = RegisterSerializer
+
+class PublicEventListView(generics.ListAPIView):
+    queryset = Event.objects.all().order_by('start_time') 
+    serializer_class = EventSerializer
+    permission_classes = [AllowAny]
+
+class OrganizerEventsView(generics.ListCreateAPIView):
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Change '-date' to '-start_time' (the minus sign means newest first!)
+        return Event.objects.filter(organizer=self.request.user).order_by('-start_time')
+
+    def perform_create(self, serializer):
+        serializer.save(organizer=self.request.user)
+
+class OrganizerEventDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # SECURITY CRITICAL: Ensure they can ONLY edit their own events!
+        return Event.objects.filter(organizer=self.request.user)
+    
+# --- NEW: STEP 1 (THE REDIS & DB LOCK) ---
+class LockSeatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, ticket_id):
+        # We use a Redis Lock to prevent 2 people from clicking the exact same seat at the exact same millisecond
+        redis_lock_key = f"redis_lock_seat_{ticket_id}"
+        if not cache.add(redis_lock_key, "locked", timeout=5):
+            return Response({"error": "Someone else is clicking this seat right now!"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        try:
+            with transaction.atomic():
+                # select_for_update guarantees no other database transaction can touch this row
+                ticket = Ticket.objects.select_for_update().get(id=ticket_id)
+
+                # Check if it's genuinely available
+                if ticket.status == 'BOOKED':
+                    return Response({"error": "Seat is already permanently booked."}, status=status.HTTP_400_BAD_REQUEST)
+                
+                if ticket.status == 'RESERVED' and ticket.reserved_until > timezone.now():
+                    if ticket.user != request.user:
+                        return Response({"error": "Seat is temporarily locked by another user."}, status=status.HTTP_400_BAD_REQUEST)
+
+                # APPLY THE 5-MINUTE LOCK
+                ticket.status = 'RESERVED'
+                ticket.user = request.user
+                ticket.reserved_until = timezone.now() + timedelta(minutes=5)
+                ticket.save()
+
+                return Response({
+                    "message": "Seat locked for 5 minutes!",
+                    "expires_at": ticket.reserved_until
+                }, status=status.HTTP_200_OK)
+        except Ticket.DoesNotExist:
+            return Response({"error": "Seat not found."}, status=status.HTTP_404_NOT_FOUND)
+        finally:
+            cache.delete(redis_lock_key)
+
+# --- NEW: STEP 2 (THE CONFIRMATION) ---
+class ConfirmSeatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, ticket_id):
+        with transaction.atomic():
+            ticket = Ticket.objects.select_for_update().get(id=ticket_id)
+
+            # Security Check: Does this user actually own the lock?
+            if ticket.user != request.user or ticket.status != 'RESERVED':
+                return Response({"error": "You do not hold the lock for this seat."}, status=status.HTTP_403_FORBIDDEN)
+
+            # Security Check: Did the lock expire while they were on the checkout page?
+            if ticket.reserved_until < timezone.now():
+                ticket.status = 'AVAILABLE'
+                ticket.user = None
+                ticket.reserved_until = None
+                ticket.save()
+                return Response({"error": "Your 5-minute reservation expired! Seat released."}, status=status.HTTP_408_REQUEST_TIMEOUT)
+
+            event = ticket.event
+
+            # 1. Process Dummy Payment & Create Booking
+            booking = Booking.objects.create(
+                user=request.user,
+                event=event,
+                total_price=event.price,
+                tickets_count=1,
+                status='SUCCESS'
+            )
+
+            # 2. Lock it permanently!
+            ticket.status = 'BOOKED'
+            ticket.booking = booking
+            ticket.reserved_until = None # Clear the timer
+            ticket.save()
+
+
+            # 3. Update Master Event Capacity
+            
+            send_ticket_confirmation.delay(
+                user_email=request.user.email,
+                event_title=event.title,
+                seat_number=ticket.seat_number,
+                booking_id=str(booking.id)
+            )
+
+            return Response({
+                "message": "Payment successful! Seat is yours permanently.",
+                "booking_id": booking.id,
+                "seat_number": ticket.seat_number
+            }, status=status.HTTP_200_OK)
+class CustomTokenObtainPairView(TokenObtainPairView):
+    # Tell SimpleJWT to use our new, upgraded serializer
+    serializer_class = CustomTokenObtainPairSerializer        
+class TicketStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, ticket_id):
+        try:
+            # We don't need select_for_update here because we are just reading, not writing.
+            ticket = Ticket.objects.get(id=ticket_id)
+
+            # Scenario 1: The ticket is fully available
+            if ticket.status == 'AVAILABLE':
+                return Response({"status": "AVAILABLE"}, status=status.HTTP_200_OK)
+
+            # Scenario 2: The ticket is permanently booked
+            if ticket.status == 'BOOKED':
+                return Response({"status": "BOOKED"}, status=status.HTTP_200_OK)
+
+            # Scenario 3: The ticket is RESERVED (Locked)
+            if ticket.status == 'RESERVED':
+                # Sub-scenario A: It's locked, but the timer expired!
+                if ticket.reserved_until < timezone.now():
+                    # Let's be helpful and clean it up right now
+                    ticket.status = 'AVAILABLE'
+                    ticket.user = None
+                    ticket.reserved_until = None
+                    ticket.save()
+                    return Response({"status": "AVAILABLE"}, status=status.HTTP_200_OK)
+
+                # Sub-scenario B: It's actively locked! Who owns it?
+                is_owner = (ticket.user == request.user)
+                
+                return Response({
+                    "status": "RESERVED",
+                    "is_owner": is_owner,
+                    "expires_at": ticket.reserved_until
+                }, status=status.HTTP_200_OK)
+
+        except Ticket.DoesNotExist:
+            return Response({"error": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)    
+
+
+================================================
+FILE: ticketing/migrations/0001_initial.py
+================================================
+# Generated by Django 6.0.4 on 2026-04-29 04:43
+
+import django.contrib.auth.models
+import django.contrib.auth.validators
+import django.db.models.deletion
+import django.utils.timezone
+import uuid
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ('auth', '0012_alter_user_first_name_max_length'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='User',
+            fields=[
+                ('password', models.CharField(max_length=128, verbose_name='password')),
+                ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
+                ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
+                ('username', models.CharField(error_messages={'unique': 'A user with that username already exists.'}, help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.', max_length=150, unique=True, validators=[django.contrib.auth.validators.UnicodeUsernameValidator()], verbose_name='username')),
+                ('first_name', models.CharField(blank=True, max_length=150, verbose_name='first name')),
+                ('last_name', models.CharField(blank=True, max_length=150, verbose_name='last name')),
+                ('email', models.EmailField(blank=True, max_length=254, verbose_name='email address')),
+                ('is_staff', models.BooleanField(default=False, help_text='Designates whether the user can log into this admin site.', verbose_name='staff status')),
+                ('is_active', models.BooleanField(default=True, help_text='Designates whether this user should be treated as active. Unselect this instead of deleting accounts.', verbose_name='active')),
+                ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name='date joined')),
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('is_organizer', models.BooleanField(default=False)),
+                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
+                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
+            ],
+            options={
+                'verbose_name': 'user',
+                'verbose_name_plural': 'users',
+                'abstract': False,
+            },
+            managers=[
+                ('objects', django.contrib.auth.models.UserManager()),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Booking',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('status', models.CharField(choices=[('PENDING', 'Pending'), ('SUCCESS', 'Success'), ('FAILED', 'Failed')], default='PENDING', max_length=20)),
+                ('total_price', models.DecimalField(decimal_places=2, default=0.0, max_digits=10)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='bookings', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Event',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('title', models.CharField(max_length=255)),
+                ('start_time', models.DateTimeField()),
+                ('total_capacity', models.PositiveIntegerField()),
+                ('organizer', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organized_events', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Ticket',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('seat_number', models.CharField(max_length=10)),
+                ('status', models.CharField(choices=[('AVAILABLE', 'Available'), ('RESERVED', 'Reserved'), ('BOOKED', 'Booked')], default='AVAILABLE', max_length=20)),
+                ('reserved_until', models.DateTimeField(blank=True, null=True)),
+                ('booking', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tickets', to='ticketing.booking')),
+                ('event', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tickets', to='ticketing.event')),
+                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'indexes': [models.Index(fields=['status', 'event'], name='ticketing_t_status_7f4d5c_idx')],
+                'unique_together': {('event', 'seat_number')},
+            },
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0002_remove_user_is_organizer_user_role_and_more.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-19 05:04
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='user',
+            name='is_organizer',
+        ),
+        migrations.AddField(
+            model_name='user',
+            name='role',
+            field=models.CharField(choices=[('CUSTOMER', 'Customer'), ('ORGANIZER', 'Organizer')], default='CUSTOMER', max_length=20),
+        ),
+        migrations.CreateModel(
+            name='OrganizerApplication',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('company_name', models.CharField(max_length=255)),
+                ('tax_id_or_website', models.CharField(max_length=255)),
+                ('status', models.CharField(choices=[('PENDING', 'pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected')], default='PENDING', max_length=20)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='organizer_application', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0003_event_image.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-19 17:54
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0002_remove_user_is_organizer_user_role_and_more'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='event',
+            name='image',
+            field=models.ImageField(blank=True, null=True, upload_to='event_covers/'),
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0004_event_description_event_price.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-20 05:14
+
+import datetime
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0003_event_image'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='event',
+            name='description',
+            field=models.CharField(default=datetime.datetime(2026, 5, 20, 5, 14, 49, 607916, tzinfo=datetime.timezone.utc), max_length=255),
+            preserve_default=False,
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='price',
+            field=models.DecimalField(decimal_places=2, default=0.0, max_digits=10),
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0005_rename_image_event_thumbnail_event_address_and_more.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-20 10:04
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0004_event_description_event_price'),
+    ]
+
+    operations = [
+        migrations.RenameField(
+            model_name='event',
+            old_name='image',
+            new_name='thumbnail',
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='address',
+            field=models.TextField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='age_restriction',
+            field=models.CharField(default='All Ages', help_text='e.g., 18+, 21+, All Ages', max_length=50),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='category',
+            field=models.CharField(choices=[('TECH', 'Technology'), ('MUSIC', 'Music'), ('SPORTS', 'Sports'), ('BUSINESS', 'Business'), ('WORKSHOP', 'Workshop'), ('OTHER', 'Other')], default='OTHER', max_length=50),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='city',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='country',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='end_datetime',
+            field=models.DateTimeField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='event_mode',
+            field=models.CharField(choices=[('ONLINE', 'Online'), ('OFFLINE', 'Offline'), ('HYBRID', 'Hybrid')], default='OFFLINE', max_length=20),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='language',
+            field=models.CharField(default='English', max_length=50),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='meeting_link',
+            field=models.URLField(blank=True, max_length=500, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='organizer_email',
+            field=models.EmailField(blank=True, max_length=254, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='organizer_name',
+            field=models.CharField(blank=True, max_length=255, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='organizer_phone',
+            field=models.CharField(blank=True, max_length=20, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='organizer_website',
+            field=models.URLField(blank=True, max_length=255, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='short_description',
+            field=models.CharField(blank=True, max_length=255, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='state',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='timezone',
+            field=models.CharField(default='UTC', help_text='e.g., Asia/Kolkata, UTC', max_length=100),
+        ),
+        migrations.AddField(
+            model_name='event',
+            name='venue_name',
+            field=models.CharField(blank=True, max_length=255, null=True),
+        ),
+        migrations.AlterField(
+            model_name='event',
+            name='description',
+            field=models.TextField(),
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0006_booking_razorpay_order_id_and_more.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-21 05:38
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0005_rename_image_event_thumbnail_event_address_and_more'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='booking',
+            name='razorpay_order_id',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='booking',
+            name='razorpay_payment_id',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='booking',
+            name='razorpay_signature',
+            field=models.CharField(blank=True, max_length=255, null=True),
+        ),
+        migrations.AddField(
+            model_name='booking',
+            name='tickets_count',
+            field=models.PositiveIntegerField(default=1),
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/0007_booking_event.py
+================================================
+# Generated by Django 6.0.4 on 2026-05-22 10:59
+
+import django.db.models.deletion
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('ticketing', '0006_booking_razorpay_order_id_and_more'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='booking',
+            name='event',
+            field=models.ForeignKey(default=None, on_delete=django.db.models.deletion.CASCADE, to='ticketing.event'),
+            preserve_default=False,
+        ),
+    ]
+
+
+
+================================================
+FILE: ticketing/migrations/__init__.py
+================================================
+[Empty file]
+

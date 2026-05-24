@@ -248,7 +248,7 @@ class ConfirmSeatView(APIView):
             ticket.save()
 
 
-            # 3. Update Master Event Capacity
+            print("🚨🚨🚨 VIEW HAS BEEN TRIGGERED! ABOUT TO SEND TO CELERY 🚨🚨🚨")
             
             send_ticket_confirmation.delay(
                 user_email=request.user.email,
@@ -256,7 +256,7 @@ class ConfirmSeatView(APIView):
                 seat_number=ticket.seat_number,
                 booking_id=str(booking.id)
             )
-
+            print("✅✅✅ TASK HANDED TO REDIS! ✅✅✅")
             return Response({
                 "message": "Payment successful! Seat is yours permanently.",
                 "booking_id": booking.id,
