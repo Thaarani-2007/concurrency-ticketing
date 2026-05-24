@@ -25,14 +25,13 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage'
+    'cloudinary_storage',         # <-- ADDED COMMA HERE
     'django.contrib.staticfiles',
-    'cloudinary'
+    'cloudinary',                 # <-- ADDED COMMA HERE
     'rest_framework',
     'ticketing',
     'corsheaders',
 ]
-
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',        # <-- MOVED UP HERE
