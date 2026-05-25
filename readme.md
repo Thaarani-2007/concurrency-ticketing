@@ -24,96 +24,221 @@ Decouples heavy, blocking operations from the main web thread to ensure a non-bl
 
 ---
 
-## 🛠️ Technology Stack
 
-**Frontend**
-* React.js
-* Axios / Fetch API
+# 🚀 Full Project Setup Guide (Docker Version)
 
-**Backend**
-* Python
-* Django & Django REST Framework (DRF)
-* Celery (Asynchronous Task Queue)
-
-**Database & Cloud Storage**
-* PostgreSQL (Relational Database)
-* Upstash Redis (In-Memory Message Broker)
-* Cloudinary (CDN for Media Storage)
-
-**DevOps & Server Architecture**
-* **Cloud Deployment:** Netlify (Frontend) & Render (Backend)
-* **Server:** Gunicorn (WSGI)
-* **Asset Pipeline:** WhiteNoise
-* **CI/CD Automation:** Bash scripts (`build.sh`, `start.sh`) for container initialization and database migrations.
+This guide will help you run the complete full-stack application using Docker.
 
 ---
 
-## 💻 Local Development Setup
+# 📦 Clone the Repository
 
-Follow these steps to run the decoupled architecture on your local machine.
+```bash
+git clone https://github.com/yourusername/your-repo-name.git
+cd your-repo-name
+```
 
-### Prerequisites
-* Python 3.10+
-* Node.js & npm
-* Redis (Running locally or via Upstash)
-* PostgreSQL
+---
 
-### Backend Setup (Django API + Celery)
+# ⚙️ Backend Environment Variables
 
-1. **Clone the repository and navigate to the backend directory:**
-   ```bash
-   git clone [https://github.com/yourusername/your-repo-name.git](https://github.com/yourusername/your-repo-name.git)
-   cd backend
-Create and activate a virtual environment:
+Create a `.env` file inside the `backend` directory.
 
-Bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-Install dependencies:
+## backend/.env
 
-Bash
-pip install -r requirements.txt
-Environment Variables:
-Create a .env file in the root directory and add your credentials:
-
-Code snippet
+```env
 SECRET_KEY=your_django_secret_key
+
 DEBUG=True
-DATABASE_URL=postgres://user:password@localhost:5432/ticketing_db
-REDIS_URL=redis://localhost:6379/0
+
+DATABASE_URL=postgres://postgres:postgres@db:5432/ticketing_db
+
+REDIS_URL=redis://redis:6379/0
+
 EMAIL_HOST_USER=your_email@gmail.com
 EMAIL_HOST_PASSWORD=your_16_letter_app_password
+
 RAZORPAY_KEY_ID=your_razorpay_key
 RAZORPAY_KEY_SECRET=your_razorpay_secret
-Run Database Migrations:
+```
 
-Bash
-python manage.py migrate
-Start the Development Servers (Requires 2 terminal windows):
+---
 
-Terminal 1 (Django API):
+# 🌐 Frontend Environment Variables
 
-Bash
-python manage.py runserver
-Terminal 2 (Celery Worker):
+Create a `.env` file inside the `frontend` directory.
 
-Bash
-celery -A core worker --loglevel=info
-Frontend Setup (React)
-Navigate to the frontend directory:
+## frontend/.env
 
-Bash
-cd frontend
-Install node modules:
-
-Bash
-npm install
-Environment Variables:
-Create a .env file in the frontend root:
-
-Code snippet
+```env
 REACT_APP_API_BASE_URL=http://localhost:8000/api
-Start the development server:
+```
 
-Bash
-npm start
+---
+
+# 🐳 Build & Start Docker Containers
+
+Run the following command from the project root directory:
+
+```bash
+docker-compose up --build
+```
+
+---
+
+# 📦 Services Running
+
+The following containers will start automatically:
+
+- Django Backend API
+- React Frontend
+- PostgreSQL Database
+- Redis Server
+- Celery Worker
+
+---
+
+# 🌍 Application URLs
+
+## Frontend
+
+```text
+http://localhost:3000
+```
+
+## Backend API
+
+```text
+http://localhost:8000
+```
+
+## Django Admin
+
+```text
+http://localhost:8000/admin
+```
+
+---
+
+# 🛢️ Run Database Migrations
+
+After containers start, open a new terminal and run:
+
+```bash
+docker-compose exec backend python manage.py migrate
+```
+
+---
+
+# 👤 Create Superuser
+
+```bash
+docker-compose exec backend python manage.py createsuperuser
+```
+
+---
+
+# 🔥 Useful Docker Commands
+
+## Start Containers
+
+```bash
+docker-compose up
+```
+
+---
+
+## Rebuild Containers
+
+```bash
+docker-compose up --build
+```
+
+---
+
+## Stop Containers
+
+```bash
+docker-compose down
+```
+
+---
+
+## View Running Containers
+
+```bash
+docker ps
+```
+
+---
+
+## Open Backend Container Shell
+
+```bash
+docker-compose exec backend bash
+```
+
+---
+
+## Open Database Shell
+
+```bash
+docker-compose exec db psql -U postgres
+```
+
+---
+
+# 🧰 Tech Stack
+
+- Django
+- Django REST Framework
+- React
+- PostgreSQL
+- Redis
+- Celery
+- Docker
+- Docker Compose
+- Razorpay
+- JWT Authentication
+
+---
+
+# 🛑 Common Issues
+
+## Port Already in Use
+
+Stop conflicting applications or change ports in `docker-compose.yml`.
+
+---
+
+## Database Connection Error
+
+Ensure:
+
+- PostgreSQL container is running
+- Correct `DATABASE_URL`
+- Migrations are executed
+
+---
+
+## Celery Worker Not Starting
+
+Check:
+
+- Redis container is running
+- Correct `REDIS_URL`
+- Celery service exists in `docker-compose.yml`
+
+---
+
+# 📌 Important Notes
+
+- Never upload `.env` files to GitHub.
+- Use Gmail App Passwords instead of your normal Gmail password.
+- Make sure Docker Desktop is running before executing commands.
+
+---
+
+# 🎉 Setup Complete
+
+Your  full-stack application should now be running successfully 🚀
