@@ -3,7 +3,7 @@
 A production-grade, decoupled full-stack application designed to handle high-traffic ticket reservations. This project demonstrates advanced backend engineering concepts, including database concurrency control, asynchronous background processing, and microservices architecture.
 
 ## 🚀 Live Demo
-* **Frontend:** [Insert Netlify URL here]
+* **Frontend:** `https://ticketing-system-demo1.netlify.app/`
 * **Backend API:** `https://concurrency-ticketing-1.onrender.com`
 
 ---
